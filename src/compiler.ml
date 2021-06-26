@@ -296,7 +296,7 @@ let compile_mod compiler opts args body =
   in
   match final_result with
   | FinalForm (c, f) ->
-    CompileError (opts.filename, Srcloc.start, "unimplemented create output")
+    CompileOk f
   | UpdateCompiler c ->
     CompileError (opts.filename, Srcloc.start, "mod form must end on an expression")
   | FormError (f, l, e) -> CompileError (f, l, e)

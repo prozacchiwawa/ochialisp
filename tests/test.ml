@@ -17,7 +17,7 @@ let emptyOpts =
 let emptyCompile = { emptyOpts with assemble = true }
 
 let tests =
-  [ { expected = CompileOk "00"
+  [ { expected = CompileOk "80"
     ; opts = emptyOpts
     ; input = "()"
     }
@@ -37,6 +37,8 @@ let _ =
              Js.log cr ;
              Js.log "for input:" ;
              Js.log e.input ;
+             Js.log "wanted:" ;
+             Js.log e.expected ;
              Node.Process.process##abort ()
            end
          else
