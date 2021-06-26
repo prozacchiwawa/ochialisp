@@ -15,6 +15,7 @@
     "bs-platform": "^9.0.2"
   },
   "dependencies": {
+    "@pckilgore/bs-biginteger": "^1.0.1",
     "browserify": "^17.0.0"
   }
 }

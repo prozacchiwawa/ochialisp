@@ -277,3 +277,50 @@ let nilp = function
   | QuotedString (_,_,"") -> true
   | Integer (_,v) -> is_zero_integer v
   | _ -> false
+
+let encode_hex_digit_list bi =
+  let encoded = BigInteger.toString bi ~base:16 () in
+  let elen = BigInteger.bigInt (`Int ((String.length encoded) / 2)) in
+  let len40 = BigInteger.bigInt (`Int 0x40) in
+  let len2000 = BigInteger.bigInt (`Int 0x2000) in
+  let len1000000 = BigInteger.bigInt (`Int 0x1000000) in
+  let len80000000 = BigInteger.bigInt (`Int 0x80000000) in
+  let lenOr =
+    if BigInteger.lesser elen (`BigInt len40) then
+      BigInteger.bigInt (`Int 0x80)
+    else if BigInteger.lesser elen (`BigInt len2000) then
+      BigInteger.bigInt (`Int 0xc000)
+    else if BigInteger.lesser elen (`BigInt len1000000) then
+      BigInteger.bigInt (`Int 0xe0000000)
+    else if BigInteger.lesser elen (`BigInt len80000000) then
+      BigInteger.bigInt (`String "0xf0000000")
+    else
+      BigInteger.bigInt (`String "0xf80000000000")
+  in
+  BigInteger.toString (BigInteger.plus elen (`BigInt lenOr)) ~base:16 ()
+
+let encode_integer_value v =
+  let bi = BigInteger.bigInt (`String v) in
+  if BigInteger.greater bi (`Int 0x7f) then
+    encode_hex_digit_list bi
+  else
+    BigInteger.toString bi ~base:16 ()
+
+let encode_string_to_bigint v =
+  let enc_array =
+    Array.init (String.length v)
+      (fun i ->
+         let chi = Char.code (String.get v i) in
+         Printf.sprintf "%02x" chi
+      )
+  in
+  "0x" ^ (String.concat "" (Array.to_list enc_array))
+
+let rec encode : 'a sexp -> string = function
+  | Comment (_,_) -> ""
+  | EmptyLine _ -> ""
+  | Nil _ -> "80"
+  | Cons (_,a,b) -> "ff" ^ (encode a) ^ (encode b)
+  | Integer (_,v) -> encode_integer_value v
+  | Atom (_,v) -> encode_integer_value @@ encode_string_to_bigint v
+  | QuotedString (_,_,v) -> encode_integer_value @@ encode_string_to_bigint v

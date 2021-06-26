@@ -2,6 +2,11 @@
 # yarn lockfile v1
 
 
+"@pckilgore/bs-biginteger@^1.0.1":
+  version "1.0.1"
+  resolved "https://registry.yarnpkg.com/@pckilgore/bs-biginteger/-/bs-biginteger-1.0.1.tgz#2d27f98451cb8d886855d2b36207a64edb666fef"
+  integrity sha512-N06Z8OmVRJI1Mzv4BvgzrGT1/46Ni51g38N2qoA5ZnAqxjdveLSHgiNxQCGeW2FKyubjzokqjsbpRpp+pgf4wA==
+
 JSONStream@^1.0.3:
   version "1.3.5"
   resolved "https://registry.yarnpkg.com/JSONStream/-/JSONStream-1.3.5.tgz#3208c1f08d3a4d99261ab64f92302bc15e111ca0"

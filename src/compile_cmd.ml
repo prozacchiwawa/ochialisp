@@ -2,11 +2,20 @@ type arg_process =
   { includeDirs : string list
   ; nextInclude : bool
   ; inputFiles : string list
+  ; noAssemble : bool
+  ; output : string
+  ; nextOutput : bool
   }
 
 let process_arg ap arg =
   if ap.nextInclude then
     { ap with nextInclude = false ; includeDirs = arg :: ap.includeDirs }
+  else if ap.nextOutput then
+    { ap with nextOutput = false ; output = arg }
+  else if arg == "-S" then
+    { ap with noAssemble = true }
+  else if arg == "-o" then
+    { ap with nextOutput = true }
   else if String.length arg == 2 && arg == "-I" then
     { ap with nextInclude = true }
   else if String.length arg > 2 && String.sub arg 0 2 == "-I" then
@@ -22,6 +31,9 @@ let main args =
     { includeDirs = []
     ; nextInclude = false
     ; inputFiles = []
+    ; noAssemble = false
+    ; output = ""
+    ; nextOutput = false
     }
   in
   let ap = List.fold_left process_arg ap args in
@@ -33,18 +45,19 @@ let main args =
        let opts : Compiler.compilerOpts =
          { includeDirs = ap.includeDirs
          ; filename = infile
-         ; readNewFile = fun _ _ _ ->
-             Compiler.CompileError (Srcloc.start, "include unimplemented")
+         ; assemble = not ap.noAssemble
+         ; readNewFile = fun _ name _ ->
+             Compiler.CompileError (name, Srcloc.start, "include unimplemented")
          }
        in
        let result = Compiler.compile_file opts input in
        match result with
        | CompileOk output ->
          Node.Fs.writeFileSync infile output `utf8
-       | CompileError (srcloc, err) ->
+       | CompileError (infile, srcloc, err) ->
          Printf.printf "%s(%s): %s\n" infile (Srcloc.toString srcloc) err
     )
-    ap.inputFiles
+    (List.rev ap.inputFiles)
 
 let _ =
   let argv = Node.Process.argv in

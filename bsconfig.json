@@ -1,10 +1,17 @@
 {
-  "name": "chialisp-online",
-  "version": "0.1.0",
-  "sources": {
-    "dir" : "src",
-    "subdirs" : true
-  },
-  "bs-dependencies": [
-  ]
+    "name": "chialisp-online",
+    "version": "0.1.0",
+    "sources": [
+        {
+            "dir" : "src",
+            "subdirs" : true
+        },
+        {
+            "dir": "tests",
+            "sibdirs": true
+        }
+    ],
+    "bs-dependencies": [
+        "@pckilgore/bs-biginteger"
+    ]
 }
