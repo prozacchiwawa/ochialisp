@@ -1,0 +1,11 @@
+{
+  "name": "chialisp-online",
+  "version": "0.1.0",
+  "sources": {
+    "dir" : "src",
+    "subdirs" : true
+  },
+  "bs-dependencies": [
+      "bucklescript-tea"
+  ]
+}
