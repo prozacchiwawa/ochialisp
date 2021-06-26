@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@pckilgore/bs-biginteger": "^1.0.1",
+    "big-integer": "^1.6.48",
     "browserify": "^17.0.0"
   }
 }
