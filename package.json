@@ -15,7 +15,6 @@
     "bs-platform": "^9.0.2"
   },
   "dependencies": {
-    "browserify": "^17.0.0",
-    "bucklescript-tea": "^0.15.0"
+    "browserify": "^17.0.0"
   }
 }

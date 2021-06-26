@@ -224,11 +224,6 @@ bs-platform@^9.0.2:
   resolved "https://registry.yarnpkg.com/bs-platform/-/bs-platform-9.0.2.tgz#a6eac70eb8924a322556dacaccbfbc9b2a0d3a37"
   integrity sha512-Ye9JqJ4Oa7mcjjoOVRYI8Uc2Cf8N7jQLWDcdUplY7996d/YErSR7WitmV7XnSwr4EvdrbwjEsg1NxNjUQv3ChA==
 
-bucklescript-tea@^0.15.0:
-  version "0.15.0"
-  resolved "https://registry.yarnpkg.com/bucklescript-tea/-/bucklescript-tea-0.15.0.tgz#45198d042e79e5b2b306054841e8d502a480c068"
-  integrity sha512-ohK62oNyRxydBVc/v8y3dHszcEh65bTQJIGrB62IxMDqvhdxppPqFJ3DLa8TJQQmUTtj6PKnVaT/IHbsVWqohg==
-
 buffer-from@^1.0.0:
   version "1.1.1"
   resolved "https://registry.yarnpkg.com/buffer-from/-/buffer-from-1.1.1.tgz#32713bc028f75c02fdb710d7c7bcec1f2c6070ef"

@@ -6,6 +6,5 @@
     "subdirs" : true
   },
   "bs-dependencies": [
-      "bucklescript-tea"
   ]
 }
