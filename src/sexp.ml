@@ -235,10 +235,11 @@ let escape_quote q s =
     List.init
       (String.length s)
       (fun i ->
-         if String.get s i == q then
+         let ch = String.get s i in
+         if ch == q then
            "\\" ^ (String.make 1 q)
          else
-           String.make 1 q
+           String.make 1 ch
       )
   in
   String.concat "" basic_escape

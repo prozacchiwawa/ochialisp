@@ -47,7 +47,10 @@ let main args =
          ; filename = infile
          ; assemble = not ap.noAssemble
          ; readNewFile = fun _ name _ ->
-             Compiler.CompileError (name, Srcloc.start, "include unimplemented")
+             if name == "*macros*" then
+               Compiler.CompileOk (name, String.concat "\n" Macros.macros)
+             else
+               Compiler.CompileError (name, Srcloc.start, "include unimplemented")
          }
        in
        let result = Compiler.compile_file opts input in

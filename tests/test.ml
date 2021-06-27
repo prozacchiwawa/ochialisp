@@ -25,6 +25,10 @@ let tests =
     ; opts = emptyOpts
     ; input = "(mod () ())"
     }
+  ; { expected = CompileOk "(c (q . 1) (c (q . 2) ()))"
+    ; opts = { emptyOpts with assemble = false }
+    ; input = "(list 1 2)"
+    }
   ]
 
 let _ =

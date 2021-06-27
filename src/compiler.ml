@@ -17,7 +17,7 @@ module StringSet = Set.Make(String)
 type symbolLookupResult
   = FunctionArg of Srcloc.t * int
   | Constant of Srcloc.t sexp
-  | Macro of Srcloc.t sexp
+  | Macro of (Srcloc.t sexp * Srcloc.t sexp)
   | FunDef of Srcloc.t sexp
   | Prim of Srcloc.t sexp
 
@@ -28,17 +28,19 @@ type compiler =
   }
 
 let empty =
+  let symbols_with_prims =
+    List.fold_left
+      (fun coll (n,v) ->
+         StringMap.add n (Prim v) coll
+      )
+      StringMap.empty
+      Prims.prims
+  in
   { parent =
       Some
         { parent = None
         ; used = StringSet.empty
-        ; symbols =
-            List.fold_left
-              (fun coll (n,v) ->
-                 StringMap.add n (Prim v) coll
-              )
-              StringMap.empty
-              Prims.prims
+        ; symbols = symbols_with_prims
         }
   ; used = StringSet.empty
   ; symbols = StringMap.empty
@@ -328,7 +330,7 @@ let rec make_arg_list opts d n (a,b) : (string * int) list compileResult =
   |> compBind (fun l -> right_side |> compMap (fun r -> (l,r)))
   |> compMap (fun (l,r) -> List.concat [l;r])
 
-let compile_mod compiler opts args body =
+let compile_mod (compiler : compiler) opts args body =
   let mod_args =
     match args with
     | Nil _ -> CompileOk []
@@ -340,7 +342,6 @@ let compile_mod compiler opts args body =
       CompileError (opts.filename,l,"integer given as argument list for mod")
     | x -> CompileError (opts.filename,Srcloc.start, "unexpected token as mod argument list")
   in
-  let initial_compiler = UpdateCompiler compiler in
   let process_mod_form
       (compiler : compiler compileFormResult)
       (form : Srcloc.t sexp) :
@@ -360,7 +361,8 @@ let compile_mod compiler opts args body =
          | CompileError (f,l,e) -> FormError (f,l,e)
       )
   in
-  let final_result = List.fold_left process_mod_form initial_compiler body in
+  let compiler = empty in
+  let final_result = List.fold_left process_mod_form (UpdateCompiler compiler) body in
   let _ = Js.log "processed mod" in
   let _ = Js.log @@ string_of_form_result final_result in
   match final_result with
@@ -369,6 +371,16 @@ let compile_mod compiler opts args body =
   | UpdateCompiler c ->
     CompileError (opts.filename, Srcloc.start, "mod form must end on an expression")
   | FormError (f, l, e) -> CompileError (f, l, e)
+
+let include_macros lst =
+  let include_stmt =
+    Cons
+      ( Srcloc.start
+      , Atom (Srcloc.start, "include")
+      , Cons (Srcloc.start, QuotedString (Srcloc.start, '\"', "*macros*"), Nil Srcloc.start)
+      )
+  in
+  include_stmt :: lst
 
 let compile_to_assembler opts pre_forms : Srcloc.t sexp compileResult =
   let compiler = empty in
@@ -384,7 +396,7 @@ let compile_to_assembler opts pre_forms : Srcloc.t sexp compileResult =
           CompileError (opts.filename, Srcloc.start, "No forms in mod")
         | Cons (_, args, modforms) ->
           let _ = Js.log @@ "modforms " ^ to_string modforms in
-          let body_list = body_cons_to_list modforms in
+          let body_list = include_macros @@ body_cons_to_list modforms in
           let _ = Js.log @@ String.concat ";" (List.map to_string body_list) in
           compile_mod compiler opts args body_list
         | _ ->
@@ -394,7 +406,7 @@ let compile_to_assembler opts pre_forms : Srcloc.t sexp compileResult =
       CompileError (opts.filename, modloc, "Only one mod allowed")
     | body ->
       (* A list of forms is like (mod () ...) *)
-      compile_mod compiler opts (Nil Srcloc.start) body
+      compile_mod compiler opts (Nil Srcloc.start) @@ include_macros body
   end
 
 let compile_file opts content : string compileResult =
