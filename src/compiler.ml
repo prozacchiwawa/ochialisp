@@ -20,6 +20,7 @@ type symbolLookupResult
   | Macro of (Srcloc.t sexp * Srcloc.t sexp)
   | FunDef of Srcloc.t sexp
   | Prim of Srcloc.t sexp
+  | Quote
 
 type compiler =
   { parent : compiler option
@@ -36,12 +37,21 @@ let empty =
       StringMap.empty
       Prims.prims
   in
+  let symbols_with_quote =
+    StringMap.add "quote" Quote symbols_with_prims
+  in
   { parent =
       Some
         { parent = None
         ; used = StringSet.empty
-        ; symbols = symbols_with_prims
+        ; symbols = symbols_with_quote
         }
+  ; used = StringSet.empty
+  ; symbols = StringMap.empty
+  }
+
+let push_frame compiler =
+  { parent = Some compiler
   ; used = StringSet.empty
   ; symbols = StringMap.empty
   }
@@ -153,40 +163,19 @@ let formMap (f : 'c -> 'd) = function
   | UpdateCompiler c -> UpdateCompiler (f c)
   | any -> any
 
-let rec lower_quote_element opts = function
-  | Nil l -> CompileOk (Nil l)
-  | Cons (l,a,Cons (x,b,c)) ->
-    lower_quote_element opts (Cons (x,b,c))
-    |> compBind
-      (fun rest ->
-         lower_quote opts a
-         |> compMap (fun first -> Cons (l,first,rest))
-      )
-  | Cons (l,a,b) ->
-    lower_quote opts b
-    |> compBind
-      (fun rest ->
-         lower_quote opts a
-         |> compMap (fun first -> Cons (l,first,rest))
-      )
-  | a -> lower_quote opts a
-
-and lower_quote opts prog =
-  match prog with
-  | Nil l -> CompileOk (Nil l)
-  | Cons (l,Atom (_, "quote"),Cons (_,obj,Nil _)) ->
-    (* Correct quote *)
-    lower_quote opts obj
-  | Cons (_,Atom (l, "quote"),_) ->
-    CompileError (opts.filename,l,"Malformed quote (too many tails)")
-  | Cons (l,a,b) -> lower_quote_element opts (Cons (l,a,b))
-  | a -> CompileOk a
-
 let compile_defun compiler opts l args body : compiler compileFormResult =
   FormError (opts.filename, l, "defun not implemented yet")
 
-let compile_macro compiler opts l args body : compiler compileFormResult =
-  FormError (opts.filename, l, "defmacro not implemented yet")
+let compile_macro compiler opts l name args body : compiler compileFormResult =
+  let to_define_in =
+    match lookup_symbol compiler name with
+    | Some _ -> push_frame compiler
+    | _ -> compiler
+  in
+  UpdateCompiler
+    { to_define_in with
+      symbols = StringMap.add name (Macro (args, body)) to_define_in.symbols
+    }
 
 let compile_inline compiler opts l args body : compiler compileFormResult =
   FormError (opts.filename, l, "defun-inline not implemented yet")
@@ -194,45 +183,70 @@ let compile_inline compiler opts l args body : compiler compileFormResult =
 let compile_expand_macro compiler opts l s args : compiler compileFormResult =
   FormError (opts.filename, l, "can't expand macro yet")
 
-let compile_call_function compiler opts l body args : (compiler * Srcloc.t sexp) compileResult =
-  CompileError (opts.filename, l, "can't call function yet")
+let rec compile_call_function compiler opts l func args : compiler compileFormResult =
+  let rec evaluated_args arg =
+    match arg with
+    | Cons (l,a,b) ->
+      eval compiler opts l a
+      |> compBind
+        (fun n ->
+           evaluated_args b
+           |> compMap (fun atl -> Cons (l, n, atl))
+        )
+    | any -> eval compiler opts l any
+  in
+  let eval_function compiler arglist : compiler compileFormResult =
+    match func with
+    | Macro s ->
+      compile_expand_macro compiler opts l s arglist
+    | FunDef body ->
+      FormError (opts.filename, l, "cannot call defun yet")
+    | Constant _ ->
+      FormError (opts.filename, l, "cannot invoke constant as a toplevel form")
+    | FunctionArg (loc,id) ->
+      FinalForm (compiler, Cons (l, Atom (loc, "a"), Integer (loc, string_of_int id)))
+    | Prim p -> FinalForm (compiler, Cons (l,p,arglist))
+  in
+  match evaluated_args args with
+  | CompileError (f,l,e) -> FormError (f,l,e)
+  | CompileOk args -> eval_function compiler args
 
-let eval compiler opts l arg =
-  CompileError (opts.filename, l, "can't eval yet")
+and eval compiler opts l arg =
+  match arg with
+  | Nil l -> CompileOk (Nil l)
+  | Integer (l,i) -> CompileOk (Cons (l,Atom (l,"q"),Integer (l,i)))
+  | QuotedString (l,q,i) -> CompileOk (QuotedString (l,q,i))
+  | Atom (l,a) ->
+    begin
+      match lookup_symbol compiler a with
+      | None -> CompileError (opts.filename,l,"unknown name " ^ a)
+      | Some (FunctionArg (l,i)) -> CompileOk (Integer (l,string_of_int i))
+      | Some (Constant v) -> CompileOk v
+      | Some (Macro (_,_)) -> CompileError (opts.filename,l,"can't use macro " ^ a ^ " as a function argument")
+      | Some (FunDef f) -> CompileOk f
+      | Some (Prim p) -> CompileOk p
+    end
+  | Comment (l,_) -> CompileError (opts.filename,l,"comment got through to compile stage")
+  | EmptyLine l -> CompileError (opts.filename,l,"emptyline made it to compile stage")
 
 let compile_top_eval compiler opts l name args : compiler compileFormResult =
   let to_invoke = lookup_symbol compiler name in
-  let evaluated_args =
-    List.fold_left
-      (fun alist arg ->
-         alist
-         |> compBind
-           (fun atl ->
-              eval compiler opts l arg |> compMap (fun n -> n :: atl)
-           )
-      )
-      (CompileOk [])
-      args
-  in
-  let eval_function compiler arglist : compiler compileFormResult =
-    match to_invoke with
-    | None -> FormError (opts.filename, l, "no symbol " ^ name ^ " at toplevel context")
-    | Some (Macro s) ->
-      compile_expand_macro compiler opts l s arglist
-    | Some (FunDef body) ->
-      compile_call_function compiler opts l body arglist
-      |> compiler_result_to_form
-    | Some (Constant _) ->
-      FormError (opts.filename, l, "cannot invoke constant " ^ name ^ " as a toplevel form")
-    | Some (FunctionArg (loc,id)) ->
-      compile_call_function compiler opts l (Cons (l, Atom (loc, "a"), Integer (loc, string_of_int id))) (list_to_cons arglist)
-      |> compiler_result_to_form
-    | Some (Prim p) ->
-      FinalForm (compiler, p)
-  in
-  match evaluated_args with
-  | CompileError (f,l,e) -> FormError (f,l,e)
-  | CompileOk args -> eval_function compiler args
+  match to_invoke with
+  | None ->
+    FormError (opts.filename, l, "toplevel invoke of undefined symbol " ^ name)
+  | Some Quote ->
+    begin
+      match args with
+      | Cons (l,quoted,Nil _) ->
+        FinalForm (compiler, Cons (l, Integer (l, "1"), quoted))
+      | any ->
+        FormError (opts.filename, l, "quote applied to malformed tail " ^ (to_string any))
+    end
+  | Some (Prim (Integer (_, "1"))) ->
+    (* Evaluating a "prim 1" does primitive style quoting. *)
+    FinalForm (compiler, Cons (l, Integer (l, "1"), args))
+  | Some other ->
+    compile_call_function compiler opts l other args
 
 let rec include_file compiler opts incfile : compiler compileFormResult =
   opts.readNewFile opts opts.filename incfile
@@ -291,16 +305,18 @@ and compile_mod_form_ compiler opts : Srcloc.t sexp -> compiler compileFormResul
     end
   | Cons (l, Atom (_,"include"), Cons (_, Atom (_, incname), _)) ->
     include_file compiler opts incname
+  | Cons (l, Atom (_,"include"), Cons (_, QuotedString (_, _, incname), _)) ->
+    include_file compiler opts incname
   | Cons (l, Atom (_,"defun"), Cons (_, Atom (_, name), Cons (_, Atom (_, args), body))) ->
     compile_defun compiler opts l args body
   | Cons (l, Atom (_,"defmacro"), Cons (_, Atom (_, name), Cons (_, args, body))) ->
-    compile_macro compiler opts l args body
+    compile_macro compiler opts l name args body
   | Cons (l, Atom (_,"defun-inline"), Cons (_, Atom (_, name), Cons (_, args, body))) ->
     compile_inline compiler opts l args body
   | Cons (l, Atom (_,name), args) ->
-    compile_top_eval compiler opts l name (body_cons_to_list args)
-  | Cons (l, _, _) ->
-    FormError (opts.filename, l, "malformed toplevel form")
+    compile_top_eval compiler opts l name args
+  | Cons (l, x, y) ->
+    FormError (opts.filename, l, "malformed toplevel form " ^ (to_string (Cons (l,x,y))))
   | Nil l -> FinalForm ({ compiler with used = StringSet.empty }, Nil l)
   | Comment (_,_) -> UpdateCompiler compiler
   | EmptyLine _ -> UpdateCompiler compiler
@@ -310,11 +326,11 @@ and compile_mod_form compiler opts form =
   let _ = Js.log @@ to_string form in
   compile_mod_form_ compiler opts form
 
-let rec make_arg_list opts d n (a,b) : (string * int) list compileResult =
+let rec make_arg_list opts d n (a,b) : (Srcloc.t * string * int) list compileResult =
   let addend_atom side = if side then d / 2 else 0 in
   let addend_cons side = if side then d else 0 in
   let make_side (side : bool) = function
-    | Atom (_,name) -> CompileOk [(name, d + n + addend_atom side)]
+    | Atom (l,name) -> CompileOk [(l, name, d + n + addend_atom side)]
     | Cons (_,x,y) -> make_arg_list opts (2 * d) (n + addend_cons side) (x,y)
     | Nil l -> CompileError (opts.filename, l, "nil doesn't make sense in a param list")
     | Integer (l,v) -> CompileError (opts.filename, l, "int doesn't make sense in a param list")
@@ -335,42 +351,48 @@ let compile_mod (compiler : compiler) opts args body =
     match args with
     | Nil _ -> CompileOk []
     | Cons (_,a,b) -> make_arg_list opts 2 0 (a,b)
-    | Atom (l,v) -> CompileOk [(v, 1)]
+    | Atom (l,v) -> CompileOk [(l, v, 1)]
     | QuotedString (l,_,_) ->
       CompileError (opts.filename,l,"quoted string given as argument list for mod")
     | Integer (l,_) ->
       CompileError (opts.filename,l,"integer given as argument list for mod")
     | x -> CompileError (opts.filename,Srcloc.start, "unexpected token as mod argument list")
   in
+  let compiler_with_args =
+    mod_args
+    |> compMap
+      (fun args ->
+         { compiler with
+           symbols =
+             List.fold_left
+               (fun coll (l,k,v) ->
+                  StringMap.add k (FunctionArg (l,v)) coll
+               )
+               compiler.symbols
+               args
+         }
+      )
+  in
   let process_mod_form
       (compiler : compiler compileFormResult)
       (form : Srcloc.t sexp) :
     compiler compileFormResult =
     compiler
-    |> formBind opts.filename
-      (fun (c : compiler) ->
-         let about_to_compile = lower_quote opts form in
-         match about_to_compile with
-         | CompileOk f ->
-           let r = compile_mod_form c opts f in
-           let _ = Js.log "compile_mod_form -> " in
-           let _ = Js.log @@ to_string f in
-           let _ = Js.log "gives -> " in
-           let _ = Js.log @@ string_of_form_result r in
-           r
-         | CompileError (f,l,e) -> FormError (f,l,e)
-      )
+    |> formBind opts.filename (fun (c : compiler) -> compile_mod_form c opts form)
   in
-  let compiler = empty in
-  let final_result = List.fold_left process_mod_form (UpdateCompiler compiler) body in
-  let _ = Js.log "processed mod" in
-  let _ = Js.log @@ string_of_form_result final_result in
-  match final_result with
-  | FinalForm (c, f) ->
-    CompileOk f
-  | UpdateCompiler c ->
-    CompileError (opts.filename, Srcloc.start, "mod form must end on an expression")
-  | FormError (f, l, e) -> CompileError (f, l, e)
+  compiler_with_args
+  |> compBind
+    (fun compiler ->
+       let final_result = List.fold_left process_mod_form (UpdateCompiler compiler) body in
+       let _ = Js.log "processed mod" in
+       let _ = Js.log @@ string_of_form_result final_result in
+       match final_result with
+       | FinalForm (c, f) ->
+         CompileOk f
+       | UpdateCompiler c ->
+         CompileError (opts.filename, Srcloc.start, "mod form must end on an expression")
+       | FormError (f, l, e) -> CompileError (f, l, e)
+    )
 
 let include_macros lst =
   let include_stmt =

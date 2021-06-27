@@ -33,22 +33,31 @@ type 'loc sexpParseResult
   | PEmit of (('loc sexp) * ('loc sexpParseState))
   | PError of ('loc * string)
 
-let emit (a : 'loc sexp) (p : 'loc sexpParseState) : 'loc sexpParseResult = PEmit (a,p)
-
 let matches_integral s =
   let is_hex () = String.length s >= 2 && String.sub s 0 2 == "0x" in
   let is_dec () =
-    let non_dec = ref false in
+    let dec = ref true in
     let _ =
       for i = 0 to ((String.length s) - 1) do
         match String.get s i with
         | '0'..'9' -> ()
-        | _ -> non_dec := true
+        | _ -> dec := false
       done
     in
-    !non_dec
+    !dec
   in
   is_hex () || is_dec ()
+
+let emit (a : 'loc sexp) (p : 'loc sexpParseState) : 'loc sexpParseResult =
+  match a with
+  | Atom (l,v) ->
+    if matches_integral v then
+      let _ = Js.log @@ "matches integral " ^ v in
+      PEmit (Integer (l,v),p)
+    else
+      let _ = Js.log @@ "not integral " ^ v in
+      PEmit (a,p)
+  | any -> PEmit (a,p)
 
 let error l t : 'loc sexpParseResult = PError (l, t)
 
@@ -164,9 +173,14 @@ let rec parse_sexp_step (ext : 'loc -> 'loc -> 'loc) (loc : 'loc) : 'loc sexpPar
         | ('.', Empty) -> resume @@ TermList (ext pl loc, Empty, list_content)
         | (')', Empty) -> emit (list_content (Nil loc)) Empty
         | (')', Bareword (l,t)) ->
-           let parsed_atom = Atom (l,t) in
-           let finished_list = make_cons ext parsed_atom (Nil loc) in
-           emit (list_content finished_list) Empty
+          let parsed_atom =
+            if matches_integral t then
+              Integer (l,t)
+            else
+              Atom (l,t)
+          in
+          let finished_list = make_cons ext parsed_atom (Nil loc) in
+          emit (list_content finished_list) Empty
         | (ch, _) ->
           begin
             match parse_sexp_step ext loc pp ch with
