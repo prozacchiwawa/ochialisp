@@ -19,6 +19,7 @@ type symbolLookupResult
   | Constant of Srcloc.t sexp
   | Macro of Srcloc.t sexp
   | FunDef of Srcloc.t sexp
+  | Prim of Srcloc.t sexp
 
 type compiler =
   { parent : compiler option
@@ -27,7 +28,18 @@ type compiler =
   }
 
 let empty =
-  { parent = None
+  { parent =
+      Some
+        { parent = None
+        ; used = StringSet.empty
+        ; symbols =
+            List.fold_left
+              (fun coll (n,v) ->
+                 StringMap.add n (Prim v) coll
+              )
+              StringMap.empty
+              Prims.prims
+        }
   ; used = StringSet.empty
   ; symbols = StringMap.empty
   }
@@ -37,18 +49,18 @@ type 'c compileFormResult =
   | FormError of string * Srcloc.t * string
   | UpdateCompiler of 'c
 
-let fst (a,_) = a
-let snd (_,b) = b
+let string_of_form_result = function
+  | FinalForm (_, s) -> "(FinalForm " ^ to_string s ^ ")"
+  | FormError (_, _, e) -> "(FormError " ^ e ^ ")"
+  | UpdateCompiler _ -> "UpdateCompiler"
 
-let cons_length a b =
+let cons_length c =
   let counted = ref 0 in
-  let current = ref (a,b) in
+  let current = ref @@ c in
   let _ =
-    while not @@ nilp @@ snd !current do
+    while listp !current && not (nilp !current) do
       let _ = counted := !counted + 1 in
-      match b with
-      | Cons (_,x,y) -> current := (x,y)
-      | _ -> current := (Nil Srcloc.start,Nil Srcloc.start)
+      current := snd !current
     done
   in
   !counted
@@ -71,22 +83,25 @@ let compiler_result_to_form = function
  * as an intermediate.
  *)
 let body_cons_to_list = function
+  | Nil _ -> []
   | Cons (l,a,b) ->
-    let llen = cons_length a b in
+    let _ = Js.log "body_cons_to_list" in
+    let _ = Js.log @@ to_string (Cons (l,a,b)) in
+    let llen = cons_length (Cons (l,a,b)) in
+    let _ = Js.log llen in
     let resarray = Array.make llen (Nil l) in
-    let ccons = ref (a,b) in
+    let ccons = ref @@ Cons (l,a,b) in
     let idx = ref 0 in
     let _ =
       while not @@ nilp @@ snd !ccons do
         let _ = Array.set resarray !idx @@ fst !ccons in
         let _ = idx := !idx + 1 in
-        match snd !ccons with
-        | Cons (_,x,y) -> ccons := (x,y)
-        | _ -> ccons := (Nil Srcloc.start,Nil Srcloc.start)
+        ccons := snd !ccons
       done
     in
+    let _ = Js.log "body_cons_to_list" in
+    let _ = Js.log resarray in
     Array.to_list resarray
-  | Nil _ -> []
   | item -> [item] (* Anything else is treated as a toplevel form *)
 
 let list_to_cons = function
@@ -127,10 +142,43 @@ let compBind f = function
   | CompileOk r -> f r
   | CompileError (f,l,e) -> CompileError (f,l,e)
 
-let formBind srcfile (f : 'c -> 'd compileFormResult) = function
+let formBind srcfile f = function
   | UpdateCompiler c -> f c
   | FormError (f,l,e) -> FormError (f,l,e)
   | FinalForm (_,f) -> FormError (srcfile, location_of f, "A nonbinding final form was already processed")
+
+let formMap (f : 'c -> 'd) = function
+  | UpdateCompiler c -> UpdateCompiler (f c)
+  | any -> any
+
+let rec lower_quote_element opts = function
+  | Nil l -> CompileOk (Nil l)
+  | Cons (l,a,Cons (x,b,c)) ->
+    lower_quote_element opts (Cons (x,b,c))
+    |> compBind
+      (fun rest ->
+         lower_quote opts a
+         |> compMap (fun first -> Cons (l,first,rest))
+      )
+  | Cons (l,a,b) ->
+    lower_quote opts b
+    |> compBind
+      (fun rest ->
+         lower_quote opts a
+         |> compMap (fun first -> Cons (l,first,rest))
+      )
+  | a -> lower_quote opts a
+
+and lower_quote opts prog =
+  match prog with
+  | Nil l -> CompileOk (Nil l)
+  | Cons (l,Atom (_, "quote"),Cons (_,obj,Nil _)) ->
+    (* Correct quote *)
+    lower_quote opts obj
+  | Cons (_,Atom (l, "quote"),_) ->
+    CompileError (opts.filename,l,"Malformed quote (too many tails)")
+  | Cons (l,a,b) -> lower_quote_element opts (Cons (l,a,b))
+  | a -> CompileOk a
 
 let compile_defun compiler opts l args body : compiler compileFormResult =
   FormError (opts.filename, l, "defun not implemented yet")
@@ -164,7 +212,7 @@ let compile_top_eval compiler opts l name args : compiler compileFormResult =
       (CompileOk [])
       args
   in
-  let eval_function arglist : compiler compileFormResult =
+  let eval_function compiler arglist : compiler compileFormResult =
     match to_invoke with
     | None -> FormError (opts.filename, l, "no symbol " ^ name ^ " at toplevel context")
     | Some (Macro s) ->
@@ -177,10 +225,12 @@ let compile_top_eval compiler opts l name args : compiler compileFormResult =
     | Some (FunctionArg (loc,id)) ->
       compile_call_function compiler opts l (Cons (l, Atom (loc, "a"), Integer (loc, string_of_int id))) (list_to_cons arglist)
       |> compiler_result_to_form
+    | Some (Prim p) ->
+      FinalForm (compiler, p)
   in
   match evaluated_args with
   | CompileError (f,l,e) -> FormError (f,l,e)
-  | CompileOk args -> eval_function args
+  | CompileOk args -> eval_function compiler args
 
 let rec include_file compiler opts incfile : compiler compileFormResult =
   opts.readNewFile opts opts.filename incfile
@@ -212,13 +262,12 @@ let rec include_file compiler opts incfile : compiler compileFormResult =
           pre_forms
     )
 
-and compile_mod_form compiler opts : Srcloc.t sexp -> compiler compileFormResult =
+and compile_mod_form_ compiler opts : Srcloc.t sexp -> compiler compileFormResult =
   function
   | QuotedString (l,ch,q) ->
     FinalForm (compiler, Cons (l, Atom (l,"q"), QuotedString (l,ch,q)))
   | Integer (l, v) ->
     FinalForm (compiler, Cons (l, Atom (l,"q"), Atom (l,v)))
-
   | Atom (l, v) ->
     begin
       match lookup_symbol compiler v with
@@ -235,6 +284,8 @@ and compile_mod_form compiler opts : Srcloc.t sexp -> compiler compileFormResult
       | Some (FunDef f) ->
         (* In lisp, a function has no value as an atom *)
         FormError (opts.filename, l, v ^ " lisp doesn't define the value of a defun'd atom")
+      | Some (Prim p) ->
+        FinalForm (compiler, p)
     end
   | Cons (l, Atom (_,"include"), Cons (_, Atom (_, incname), _)) ->
     include_file compiler opts incname
@@ -251,6 +302,11 @@ and compile_mod_form compiler opts : Srcloc.t sexp -> compiler compileFormResult
   | Nil l -> FinalForm ({ compiler with used = StringSet.empty }, Nil l)
   | Comment (_,_) -> UpdateCompiler compiler
   | EmptyLine _ -> UpdateCompiler compiler
+
+and compile_mod_form compiler opts form =
+  let _ = Js.log "compile_mod_form" in
+  let _ = Js.log @@ to_string form in
+  compile_mod_form_ compiler opts form
 
 let rec make_arg_list opts d n (a,b) : (string * int) list compileResult =
   let addend_atom side = if side then d / 2 else 0 in
@@ -284,16 +340,29 @@ let compile_mod compiler opts args body =
       CompileError (opts.filename,l,"integer given as argument list for mod")
     | x -> CompileError (opts.filename,Srcloc.start, "unexpected token as mod argument list")
   in
-  let final_result =
-    List.fold_left
-      (fun compiler form ->
-         compiler
-         |> formBind opts.filename
-           (fun c -> compile_mod_form c opts form)
+  let initial_compiler = UpdateCompiler compiler in
+  let process_mod_form
+      (compiler : compiler compileFormResult)
+      (form : Srcloc.t sexp) :
+    compiler compileFormResult =
+    compiler
+    |> formBind opts.filename
+      (fun (c : compiler) ->
+         let about_to_compile = lower_quote opts form in
+         match about_to_compile with
+         | CompileOk f ->
+           let r = compile_mod_form c opts f in
+           let _ = Js.log "compile_mod_form -> " in
+           let _ = Js.log @@ to_string f in
+           let _ = Js.log "gives -> " in
+           let _ = Js.log @@ string_of_form_result r in
+           r
+         | CompileError (f,l,e) -> FormError (f,l,e)
       )
-      (UpdateCompiler compiler)
-      body
   in
+  let final_result = List.fold_left process_mod_form initial_compiler body in
+  let _ = Js.log "processed mod" in
+  let _ = Js.log @@ string_of_form_result final_result in
   match final_result with
   | FinalForm (c, f) ->
     CompileOk f
@@ -314,7 +383,10 @@ let compile_to_assembler opts pre_forms : Srcloc.t sexp compileResult =
         | Cons (_, args, Nil _) ->
           CompileError (opts.filename, Srcloc.start, "No forms in mod")
         | Cons (_, args, modforms) ->
-          compile_mod compiler opts args @@ body_cons_to_list modforms
+          let _ = Js.log @@ "modforms " ^ to_string modforms in
+          let body_list = body_cons_to_list modforms in
+          let _ = Js.log @@ String.concat ";" (List.map to_string body_list) in
+          compile_mod compiler opts args body_list
         | _ ->
           CompileError (opts.filename, Srcloc.start, "Malformed mod form")
       end

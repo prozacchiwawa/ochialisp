@@ -278,6 +278,19 @@ let nilp = function
   | Integer (_,v) -> is_zero_integer v
   | _ -> false
 
+let listp = function
+  | Nil _ -> true
+  | Cons (_,_,_) -> true
+  | _ -> false
+
+let fst = function
+  | Cons (l,a,_) -> a
+  | _ -> Nil Srcloc.start
+
+let snd = function
+  | Cons (_,_,b) -> b
+  | _ -> Nil Srcloc.start
+
 let encode_hex_digit_list bi =
   let encoded = BigInteger.toString bi ~base:16 () in
   let elen = BigInteger.bigInt (`Int ((String.length encoded) / 2)) in

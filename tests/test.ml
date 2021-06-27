@@ -21,6 +21,10 @@ let tests =
     ; opts = emptyOpts
     ; input = "()"
     }
+  ; { expected = CompileOk "80"
+    ; opts = emptyOpts
+    ; input = "(mod () ())"
+    }
   ]
 
 let _ =
