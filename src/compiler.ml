@@ -17,7 +17,7 @@ module StringSet = Set.Make(String)
 type symbolLookupResult
   = FunctionArg of Srcloc.t * int
   | Constant of Srcloc.t sexp
-  | Macro of (Srcloc.t sexp * Srcloc.t sexp)
+  | Macro of Srcloc.t sexp
   | FunDef of Srcloc.t sexp
   | Prim of Srcloc.t sexp
   | Quote
@@ -29,22 +29,20 @@ type compiler =
   }
 
 let empty =
-  let symbols_with_prims =
+  let symbols =
     List.fold_left
       (fun coll (n,v) ->
          StringMap.add n (Prim v) coll
       )
       StringMap.empty
       Prims.prims
-  in
-  let symbols_with_quote =
-    StringMap.add "quote" Quote symbols_with_prims
+    |> StringMap.add "quote" Quote
   in
   { parent =
       Some
         { parent = None
         ; used = StringSet.empty
-        ; symbols = symbols_with_quote
+        ; symbols = symbols
         }
   ; used = StringSet.empty
   ; symbols = StringMap.empty
@@ -62,8 +60,8 @@ type 'c compileFormResult =
   | UpdateCompiler of 'c
 
 let string_of_form_result = function
-  | FinalForm (_, s) -> "(FinalForm " ^ to_string s ^ ")"
-  | FormError (_, _, e) -> "(FormError " ^ e ^ ")"
+  | FinalForm (_, s) -> Printf.sprintf "(FinalForm %s)" (to_string s)
+  | FormError (f, l, e) -> Printf.sprintf "(FormError %s(%s): %s" f (Srcloc.toString l) e
   | UpdateCompiler _ -> "UpdateCompiler"
 
 let cons_length c =
@@ -77,11 +75,15 @@ let cons_length c =
   in
   !counted
 
-let lookup_symbol compiler name =
+let rec lookup_symbol compiler name =
   try
     Some (StringMap.find name compiler.symbols)
   with _ ->
-    None
+    begin
+      match compiler.parent with
+      | None -> None
+      | Some c -> lookup_symbol c name
+    end
 
 let compiler_result_to_update = function
   | CompileOk c -> UpdateCompiler c
@@ -97,22 +99,17 @@ let compiler_result_to_form = function
 let body_cons_to_list = function
   | Nil _ -> []
   | Cons (l,a,b) ->
-    let _ = Js.log "body_cons_to_list" in
-    let _ = Js.log @@ to_string (Cons (l,a,b)) in
     let llen = cons_length (Cons (l,a,b)) in
-    let _ = Js.log llen in
     let resarray = Array.make llen (Nil l) in
     let ccons = ref @@ Cons (l,a,b) in
     let idx = ref 0 in
     let _ =
-      while not @@ nilp @@ snd !ccons do
+      while not @@ nilp !ccons do
         let _ = Array.set resarray !idx @@ fst !ccons in
         let _ = idx := !idx + 1 in
         ccons := snd !ccons
       done
     in
-    let _ = Js.log "body_cons_to_list" in
-    let _ = Js.log resarray in
     Array.to_list resarray
   | item -> [item] (* Anything else is treated as a toplevel form *)
 
@@ -149,22 +146,17 @@ let formMap (f : 'c -> 'd) = function
 let compile_defun compiler opts l args body : compiler compileFormResult =
   FormError (opts.filename, l, "defun not implemented yet")
 
-let compile_macro compiler opts l name args body : compiler compileFormResult =
-  let to_define_in =
-    match lookup_symbol compiler name with
-    | Some _ -> push_frame compiler
-    | _ -> compiler
-  in
-  UpdateCompiler
-    { to_define_in with
-      symbols = StringMap.add name (Macro (args, body)) to_define_in.symbols
-    }
-
 let compile_inline compiler opts l args body : compiler compileFormResult =
   FormError (opts.filename, l, "defun-inline not implemented yet")
 
 let compile_expand_macro compiler opts l s args : compiler compileFormResult =
-  FormError (opts.filename, l, "can't expand macro yet")
+  let run_result = Clvm.run s args in
+  match run_result with
+  | RunOk r ->
+    let _ = Js.log @@ "run macro " ^ to_string s ^ " with " ^ to_string args in
+    let _ = Js.log @@ "get output " ^ to_string r in
+    FinalForm (compiler, r)
+  | RunError (l,e) -> FormError (opts.filename,l,e)
 
 let rec compile_call_function compiler opts l func args : compiler compileFormResult =
   let rec evaluated_args arg =
@@ -205,14 +197,27 @@ and eval compiler opts l arg =
       | None -> CompileError (opts.filename,l,"unknown name " ^ a)
       | Some (FunctionArg (l,i)) -> CompileOk (Integer (l,string_of_int i))
       | Some (Constant v) -> CompileOk v
-      | Some (Macro (_,_)) -> CompileError (opts.filename,l,"can't use macro " ^ a ^ " as a function argument")
+      | Some (Macro _) ->
+        CompileError (opts.filename,l,"can't use macro " ^ a ^ " as a function argument")
       | Some (FunDef f) -> CompileOk f
       | Some (Prim p) -> CompileOk p
     end
-  | Comment (l,_) -> CompileError (opts.filename,l,"comment got through to compile stage")
-  | EmptyLine l -> CompileError (opts.filename,l,"emptyline made it to compile stage")
+  | Cons (l,Atom (_,head),rest) ->
+    begin
+      match compile_top_eval compiler opts l head rest with
+      | FinalForm (_,f) -> CompileOk f
+      | FormError (f,l,e) -> CompileError (f,l,e)
+      | UpdateCompiler _ -> CompileError (opts.filename,l,"Wrong kind of form preceeding invocation")
+    end
+  | Cons (l,h,r) ->
+    CompileError
+      (opts.filename,l,"don't know how to eval " ^ to_string (Cons (l,h,r)))
+  | Comment (l,_) ->
+    CompileError (opts.filename,l,"comment got through to compile stage")
+  | EmptyLine l ->
+    CompileError (opts.filename,l,"emptyline made it to compile stage")
 
-let compile_top_eval compiler opts l name args : compiler compileFormResult =
+and compile_top_eval compiler opts l name args : compiler compileFormResult =
   let to_invoke = lookup_symbol compiler name in
   match to_invoke with
   | None ->
@@ -223,7 +228,7 @@ let compile_top_eval compiler opts l name args : compiler compileFormResult =
       | Cons (l,quoted,Nil _) ->
         FinalForm (compiler, Cons (l, Integer (l, "1"), quoted))
       | any ->
-        FormError (opts.filename, l, "quote applied to malformed tail " ^ (to_string any))
+        FormError (opts.filename, l, "quote applied to malformed tail " ^ to_string any)
     end
   | Some (Prim (Integer (_, "1"))) ->
     (* Evaluating a "prim 1" does primitive style quoting. *)
@@ -261,6 +266,25 @@ let rec include_file compiler opts incfile : compiler compileFormResult =
           pre_forms
     )
 
+and compile_macro compiler opts l name args body : compiler compileFormResult =
+  let _ = Js.log @@ "macro body " ^ to_string body in
+  let full_body = body_cons_to_list body in
+  let _ = Js.log @@ "macro body list " ^ (String.concat ";" (List.map to_string full_body)) in
+  compile_mod compiler opts args full_body
+  |> compMap
+    (fun f ->
+       let _ = Js.log @@ "macro compiled: " ^ to_string f in
+       let to_define_in =
+         match lookup_symbol compiler name with
+         | Some _ -> push_frame compiler
+         | _ -> compiler
+       in
+       { to_define_in with
+         symbols = StringMap.add name (Macro f) to_define_in.symbols
+       }
+    )
+  |> compiler_result_to_update
+
 and compile_mod_form_ compiler opts : Srcloc.t sexp -> compiler compileFormResult =
   function
   | QuotedString (l,ch,q) ->
@@ -290,9 +314,13 @@ and compile_mod_form_ compiler opts : Srcloc.t sexp -> compiler compileFormResul
     include_file compiler opts incname
   | Cons (l, Atom (_,"include"), Cons (_, QuotedString (_, _, incname), _)) ->
     include_file compiler opts incname
-  | Cons (l, Atom (_,"defun"), Cons (_, Atom (_, name), Cons (_, Atom (_, args), body))) ->
+  | Cons (l, Atom (_,"defun"), Cons (_, Atom (_, name), Cons (_, args, body))) ->
     compile_defun compiler opts l args body
   | Cons (l, Atom (_,"defmacro"), Cons (_, Atom (_, name), Cons (_, args, body))) ->
+    let _ =
+      Js.log @@
+      "defmacro " ^ name ^ " args " ^ to_string args ^ " body " ^ to_string body
+    in
     compile_macro compiler opts l name args body
   | Cons (l, Atom (_,"defun-inline"), Cons (_, Atom (_, name), Cons (_, args, body))) ->
     compile_inline compiler opts l args body
@@ -309,7 +337,7 @@ and compile_mod_form compiler opts form =
   let _ = Js.log @@ to_string form in
   compile_mod_form_ compiler opts form
 
-let rec make_arg_list opts d n (a,b) : (Srcloc.t * string * int) list compileResult =
+and make_arg_list opts d n (a,b) : (Srcloc.t * string * int) list compileResult =
   let addend_atom side = if side then d / 2 else 0 in
   let addend_cons side = if side then d else 0 in
   let make_side (side : bool) = function
@@ -329,7 +357,7 @@ let rec make_arg_list opts d n (a,b) : (Srcloc.t * string * int) list compileRes
   |> compBind (fun l -> right_side |> compMap (fun r -> (l,r)))
   |> compMap (fun (l,r) -> List.concat [l;r])
 
-let compile_mod (compiler : compiler) opts args body =
+and compile_mod (compiler : compiler) opts args body =
   let mod_args =
     match args with
     | Nil _ -> CompileOk []
@@ -377,7 +405,7 @@ let compile_mod (compiler : compiler) opts args body =
        | FormError (f, l, e) -> CompileError (f, l, e)
     )
 
-let include_macros lst =
+and include_macros lst =
   let include_stmt =
     Cons
       ( Srcloc.start
@@ -387,7 +415,7 @@ let include_macros lst =
   in
   include_stmt :: lst
 
-let compile_to_assembler opts pre_forms : Srcloc.t sexp compileResult =
+and compile_to_assembler opts pre_forms : Srcloc.t sexp compileResult =
   let compiler = empty in
   let forms = strip_useless pre_forms in
   begin
@@ -414,7 +442,7 @@ let compile_to_assembler opts pre_forms : Srcloc.t sexp compileResult =
       compile_mod compiler opts (Nil Srcloc.start) @@ include_macros body
   end
 
-let compile_file opts content : string compileResult =
+and compile_file opts content : string compileResult =
   let parse_result =
     parse_sexp
       Srcloc.combineSrcLocation

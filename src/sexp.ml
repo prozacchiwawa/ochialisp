@@ -54,8 +54,12 @@ let normalize_int v =
 let emit (a : 'loc sexp) (p : 'loc sexpParseState) : 'loc sexpParseResult =
   match a with
   | Atom (l,v) ->
+    let alen = String.length v in
     if matches_integral v then
       PEmit (Integer (l,normalize_int v),p)
+    else if alen > 0 && String.get v 0 == '#' then
+      (* assemble_from_ir: #a == a *)
+      PEmit (Atom (l,String.sub v 1 (alen - 1)),p)
     else
       PEmit (a,p)
   | any -> PEmit (a,p)
@@ -172,11 +176,15 @@ let rec parse_sexp_step (ext : 'loc -> 'loc -> 'loc) (loc : 'loc) : 'loc sexpPar
       fun ch ->
         match (ch, pp) with
         | ('.', Empty) -> resume @@ TermList (ext pl loc, Empty, list_content)
-        | (')', Empty) -> emit (list_content (Nil loc)) Empty
+        | (')', Empty) ->
+          emit (list_content (Nil loc)) Empty
         | (')', Bareword (l,t)) ->
+          let tlen = String.length t in
           let parsed_atom =
             if matches_integral t then
               Integer (l,normalize_int t)
+            else if tlen > 0 && String.get t 0 == '#' then
+              Atom (l,String.sub t 1 (tlen - 1))
             else
               Atom (l,t)
           in
@@ -188,11 +196,11 @@ let rec parse_sexp_step (ext : 'loc -> 'loc -> 'loc) (loc : 'loc) : 'loc sexpPar
             | PEmit (o,p) ->
               let
                 result =
-                  ParsingList
-                    ( ext pl loc
-                    , p
-                    , fun rest -> list_content (make_cons ext o rest)
-                    )
+                ParsingList
+                  ( ext pl loc
+                  , p
+                  , fun rest -> list_content (make_cons ext o rest)
+                  )
               in
               resume result
             | PResume rp -> resume @@ ParsingList (ext pl loc, rp, list_content)
@@ -204,17 +212,26 @@ let rec parse_sexp_step (ext : 'loc -> 'loc -> 'loc) (loc : 'loc) : 'loc sexpPar
       fun ch ->
         match (ch, pp) with
         | ('.', Empty) -> error loc "Multiple dots in list notation are illegal"
-        | (')', Empty) -> error loc "list with dot but no final sexp"
+        | (')', Empty) -> emit (list_content (Nil loc)) Empty
         | (')', Bareword (l,t)) ->
            let parsed_atom = Atom (l,t) in
            emit (list_content parsed_atom) Empty
-         | (ch, _) ->
-           begin
-             match parse_sexp_step ext loc pp ch with
-             | PEmit (o,p) -> emit (list_content o) p
-             | PResume p -> resume @@ TermList (ext pl loc, p, list_content)
-             | PError e -> PError e
-           end
+        | (ch, _) ->
+          begin
+            match parse_sexp_step ext loc pp ch with
+            | PEmit (o,p) ->
+              let
+                result =
+                ParsingList
+                  ( ext pl loc
+                  , p
+                  , fun _ -> list_content o
+                  )
+              in
+              resume result
+            | PResume p -> resume @@ TermList (ext pl loc, p, list_content)
+            | PError e -> PError e
+          end
     end
 
 type 'loc finalParse
