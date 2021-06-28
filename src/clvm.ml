@@ -7,10 +7,12 @@ type 'a runResult
   | RunOk of 'a
 
 let rec path_to_expression l p context =
-  if p mod 2 == 0 then
-    path_to_expression l (p/2) (Cons (l, Integer (l,"5"), context))
+  if p == 1 then
+    context
+  else if p mod 2 == 0 then
+    path_to_expression l (p/2) (Cons (l, Integer (l,"5"), (Cons (l, context, Nil l))))
   else
-    path_to_expression l (p/2) (Cons (l, Integer (l,"6"), context))
+    path_to_expression l (p/2) (Cons (l, Integer (l,"6"), (Cons (l, context, Nil l))))
 
 let runMap (f : 'a -> 'b) : 'a runResult -> 'b runResult = function
   | RunOk e -> RunOk (f e)
@@ -97,6 +99,8 @@ let rec run sexp context =
   in
   let rec apply_op l head args =
     match (head,args) with
+    | (Integer (_,"1"), any) ->
+      RunOk any
     | (Integer (_,"2"), Cons (_,torun,Cons (_,nc,Nil _))) ->
       run torun nc
     | ( Integer (_,"3")
@@ -186,7 +190,6 @@ let rec run sexp context =
       |> runMap
         (fun s ->
            let hasher = Hash.create () in
-           let _ = Hash.update hasher s in
            Integer (l, "0x" ^ Hash.hex hasher)
         )
     | ( Integer (_,"12")
@@ -419,7 +422,7 @@ let rec run sexp context =
   match sexp with
   | Integer (l,v) ->
     (* An integer picks a value from the context *)
-    run (path_to_expression l (intval v) context) context
+    run (path_to_expression l (intval v) (Cons (l,Integer (l,"1"),context))) context
   | QuotedString (l,_,t) ->
     RunOk sexp
   | Atom (l,v) ->
