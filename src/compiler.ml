@@ -129,23 +129,6 @@ let list_to_cons = function
     in
     !conses
 
-let rec strip_useless_sexp =
-  function
-  | Cons (_, Comment _, tl) -> strip_useless_sexp tl
-  | Cons (_, EmptyLine _, tl) -> strip_useless_sexp tl
-  | Cons (l, allowed, tl) -> Cons (l, allowed, strip_useless_sexp tl)
-  | form -> form
-
-let is_useless = function
-  | Comment _ -> true
-  | EmptyLine _ -> true
-  | _ -> false
-
-let strip_useless pre_forms =
-  List.map
-    strip_useless_sexp
-    (List.filter (fun form -> not (is_useless form)) pre_forms)
-
 let compMap f = function
   | CompileOk r -> CompileOk (f r)
   | CompileError (f,l,e) -> CompileError (f,l,e)

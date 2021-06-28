@@ -1,6 +1,6 @@
-all: lib/js/src/compile_cmd.js
+all: lib/js/src/compile_cmd.js lib/js/src/clvm_cmd.js
 
-lib/js/src/compile_cmd.js lib/js/test/test.js: src/compile_cmd.ml
+lib/js/src/compile_cmd.js lib/js/clvm_cmd.js lib/js/test/test.js: $(wildcard src/*.ml)
 	npm run build
 
 test: lib/js/test/test.js

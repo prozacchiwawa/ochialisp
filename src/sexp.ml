@@ -48,14 +48,15 @@ let matches_integral s =
   in
   is_hex () || is_dec ()
 
+let normalize_int v =
+  BigInteger.toString (BigInteger.bigInt (`String v)) ~base:10 ()
+
 let emit (a : 'loc sexp) (p : 'loc sexpParseState) : 'loc sexpParseResult =
   match a with
   | Atom (l,v) ->
     if matches_integral v then
-      let _ = Js.log @@ "matches integral " ^ v in
-      PEmit (Integer (l,v),p)
+      PEmit (Integer (l,normalize_int v),p)
     else
-      let _ = Js.log @@ "not integral " ^ v in
       PEmit (a,p)
   | any -> PEmit (a,p)
 
@@ -175,7 +176,7 @@ let rec parse_sexp_step (ext : 'loc -> 'loc -> 'loc) (loc : 'loc) : 'loc sexpPar
         | (')', Bareword (l,t)) ->
           let parsed_atom =
             if matches_integral t then
-              Integer (l,t)
+              Integer (l,normalize_int t)
             else
               Atom (l,t)
           in
@@ -342,7 +343,10 @@ let encode_string_to_bigint v =
          Printf.sprintf "%02x" chi
       )
   in
-  "0x" ^ (String.concat "" (Array.to_list enc_array))
+  String.concat "" (Array.to_list enc_array)
+
+let encode_int_to_bigint v =
+  BigInteger.toString (BigInteger.bigInt (`String v)) ~base:16 ()
 
 let rec encode : 'a sexp -> string = function
   | Comment (_,_) -> ""
@@ -350,5 +354,41 @@ let rec encode : 'a sexp -> string = function
   | Nil _ -> "80"
   | Cons (_,a,b) -> "ff" ^ (encode a) ^ (encode b)
   | Integer (_,v) -> encode_integer_value v
-  | Atom (_,v) -> encode_integer_value @@ encode_string_to_bigint v
-  | QuotedString (_,_,v) -> encode_integer_value @@ encode_string_to_bigint v
+  | Atom (_,v) ->
+    encode_integer_value @@ "0x" ^ encode_string_to_bigint v
+  | QuotedString (_,_,v) ->
+    encode_integer_value @@ "0x" ^ encode_string_to_bigint v
+
+let intval v =
+  BigInteger.toJSNumber (BigInteger.bigInt (`String v))
+
+let rec strip_useless_sexp =
+  function
+  | Cons (_, Comment _, tl) -> strip_useless_sexp tl
+  | Cons (_, EmptyLine _, tl) -> strip_useless_sexp tl
+  | Cons (l, allowed, tl) -> Cons (l, allowed, strip_useless_sexp tl)
+  | form -> form
+
+let is_useless = function
+  | Comment _ -> true
+  | EmptyLine _ -> true
+  | _ -> false
+
+let strip_useless pre_forms =
+  List.map
+    strip_useless_sexp
+    (List.filter (fun form -> not (is_useless form)) pre_forms)
+
+let rec equal a b =
+  if nilp a && nilp b then
+    true
+  else if nilp a || nilp b then
+    false
+  else
+    match (a,b) with
+    | (Cons (la,r,s), Cons (lb,t,u)) ->
+      equal r t && equal s u
+    | (Cons (_,_,_), _) -> false
+    | (_, Cons (_,_,_)) -> false
+    | (a,b) -> encode a == encode b
+

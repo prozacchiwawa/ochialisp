@@ -17,6 +17,8 @@
   "dependencies": {
     "@pckilgore/bs-biginteger": "^1.0.1",
     "big-integer": "^1.6.48",
-    "browserify": "^17.0.0"
+    "binascii": "^0.0.2",
+    "browserify": "^17.0.0",
+    "js-sha256": "^0.9.0"
   }
 }
