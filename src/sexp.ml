@@ -58,7 +58,7 @@ let emit (a : 'loc sexp) (p : 'loc sexpParseState) : 'loc sexpParseResult =
       PEmit (Atom (l,String.sub v 1 (alen - 1)),p)
     else
       PEmit (a,p)
-  | any -> PEmit (a,p)
+  | any -> PEmit (any,p)
 
 let error l t : 'loc sexpParseResult = PError (l, t)
 
@@ -227,7 +227,7 @@ let rec parse_sexp_inner ext start advance p n s =
     match p with
     | Empty -> Success []
     | Bareword (l, t) -> Success [Atom (l,t)]
-    | CommentText (l, t) -> Success []
+    | CommentText (_, _) -> Success []
     | Quoted (l, _, _) -> Failure (l, "unterminated quoted string")
     | QuotedEscaped (l, _, _) -> Failure (l, "unterminated quoted string with escape")
     | OpenList l -> Failure (l, "Unterminated list (empty)")
@@ -298,11 +298,11 @@ let listp = function
   | Cons (_,_,_) -> true
   | _ -> false
 
-let fst = function
-  | Cons (l,a,_) -> a
+let cons_fst = function
+  | Cons (_,a,_) -> a
   | _ -> Nil Srcloc.start
 
-let snd = function
+let cons_snd = function
   | Cons (_,_,b) -> b
   | _ -> Nil Srcloc.start
 
@@ -366,7 +366,7 @@ let rec equal a b =
     false
   else
     match (a,b) with
-    | (Cons (la,r,s), Cons (lb,t,u)) ->
+    | (Cons (_,r,s), Cons (_,t,u)) ->
       equal r t && equal s u
     | (Cons (_,_,_), _) -> false
     | (_, Cons (_,_,_)) -> false

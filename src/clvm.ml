@@ -38,7 +38,7 @@ let cvt_to_int l = function
   | QuotedString (_,_,v) -> RunOk (intval @@ "0x" ^ encode_string_to_bigint v)
   | any -> RunError (l, "bad argument for int conversion " ^ to_string any)
 
-let do_arith l op a b = RunError (l, "not implemented")
+let do_arith l _op _a _b = RunError (l, "not implemented")
 
 let do_greater a b =
   if BigInteger.greater a b then
@@ -46,7 +46,7 @@ let do_greater a b =
   else
     BigInteger.bigInt (`Int 0)
 
-let do_divmod l a b = RunError (l, "not implemented")
+let do_divmod l _a _b = RunError (l, "not implemented")
 
 let shl n v =
   BigInteger.shiftLeft n v
@@ -54,11 +54,11 @@ let shl n v =
 let shr n v =
   BigInteger.shiftRight n v
 
-let logand a b = raise Not_found
+let logand _a _b = raise Not_found
 
-let logior a b = raise Not_found
+let logior _a _b = raise Not_found
 
-let logxor a b = raise Not_found
+let logxor _a _b = raise Not_found
 
 let rec run sexp context =
   let _ = Js.log @@ to_string sexp ^ " <- " ^ to_string context in
@@ -69,14 +69,14 @@ let rec run sexp context =
       begin
         let matching_ops =
           List.filter
-            (fun (pn,pv) -> pn == v)
+            (fun (pn,_pv) -> pn == v)
             Prims.prims
         in
         match matching_ops with
         | (_,hd) :: _ -> RunOk hd
         | _ -> RunError (l, "Can't find operator '" ^ v ^ "'")
       end
-    | Integer (l,i) -> RunOk sexp
+    | Integer (_,_) -> RunOk sexp
     | Cons (l,a,Nil l1) -> run (Cons (l,a,Nil l1)) context
     | any -> RunError (location_of any, "Unexpected head form in clvm " ^ to_string sexp)
   in
@@ -425,7 +425,7 @@ let rec run sexp context =
   | Integer (l,v) ->
     (* An integer picks a value from the context *)
     run (path_to_expression l (intval v) (Cons (l,Integer (l,"1"),context))) context
-  | QuotedString (l,_,t) ->
+  | QuotedString (_,_,_) ->
     RunOk sexp
   | Atom (l,v) ->
     (* Atoms are integers in this context *)

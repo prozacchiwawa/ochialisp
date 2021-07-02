@@ -1,6 +1,5 @@
 open Comptypes
-open Compiler
-    
+
 type arg_process =
   { includeDirs : string list
   ; nextInclude : bool
