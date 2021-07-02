@@ -52,17 +52,16 @@ let process_pp_form opts = function
 
   | any -> CompileOk [any]
 
-let rec expand_form_list l rest = function
-  | [] -> Cons (l,rest,Nil l)
-  | hd :: tl -> Cons (l,hd,expand_form_list l rest tl)
+let rec preprocess opts : Srcloc.t sexp -> Srcloc.t sexp list compileResult = function
+  | Cons (_,head,Nil _) ->
+    process_pp_form opts head
 
-let rec preprocess opts = function
-  | Nil l -> CompileOk (Nil l)
-  | Cons (l,head,rest) ->
+  | Cons (_,head,rest) ->
     process_pp_form opts head
     |> compBind
       (fun lst ->
          preprocess opts rest
-         |> compMap (fun r -> expand_form_list l r lst)
+         |> compMap (fun rs -> List.concat [lst;rs])
       )
-  | any -> CompileOk any
+
+  | any -> CompileOk [any]

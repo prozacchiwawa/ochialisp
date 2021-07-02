@@ -33,17 +33,86 @@ let compute_env_shape l args helpers =
   let cdr = args in
   Cons (l, car, cdr)
 
-(* XXX *)
-let create_name_lookup l _name _env = Integer (l, "1")
+let rec create_name_lookup_ l name env = function
+  | Atom (l,a) ->
+    if a == name then
+      CompileOk 1
+    else
+      CompileError (l, Printf.sprintf "%s not found (via %s)" name a)
+  | Cons (l,head,rest) ->
+    begin
+      match create_name_lookup_ l name env head with
+      | CompileError _ ->
+        create_name_lookup_ l name env rest |> compMap (fun v -> 2 * v + 1)
+      | CompileOk v -> CompileOk (2 * v)
+    end
+  | any ->
+    CompileError
+      ( l
+      , Printf.sprintf
+          "%s not found checking %s in %s"
+          name (to_string any) (to_string env)
+      )
 
-(* XXX *)
-let codegen_to_sexp _codegen =
+let create_name_lookup compiler l name =
+  create_name_lookup_ l name compiler.env compiler.env
+  |> compMap (fun i -> Integer (l,string_of_int i))
+
+let codegen_to_sexp _compiler =
   Cons (Srcloc.start, Atom (Srcloc.start, "codegen"), Nil Srcloc.start)
+
+let rec process_apply_args compiler = function
+  | Atom (l,n) ->
+    create_name_lookup compiler l n
+    |> compMap (fun f -> Code (l,f))
+  | Cons (_,f,r) ->
+    process_apply_args compiler r
+    |> compBind
+      (function
+        | Code (_,r) ->
+          generate_bodyform_code compiler f
+          |> compMap
+            (function
+              | Code (l,f) -> Code (l, Cons (l, Integer (l,"4"), Cons (l,f,r)))
+            )
+      )
+
+  | any -> CompileOk (Code (location_of any, any))
+
+and generate_bodyform_code compiler = function
+  | Atom (l,n) ->
+    create_name_lookup compiler l n |> compMap (fun i -> Code (l,i))
+  | Cons (_,Atom (_,name),rest) ->
+    process_apply_args compiler rest
+    |> compBind
+      (function
+        | Code (l,args) ->
+          create_name_lookup compiler l name
+          |> compMap
+            (fun flookup ->
+                Code
+                  ( l
+                  , Cons
+                      ( l
+                      , Integer (l,"2")
+                      , Cons
+                          ( l
+                          , flookup
+                          , Cons (l,args,Nil l)
+                          )
+                      )
+                  )
+            )
+      )
+  | any -> CompileOk (Code (location_of any,any))
+
+and generate_expr_code compiler = function
+  | Let (l,_bindings,_expr) -> CompileError (l, "can't yet do let")
+  | Expr (_,e) -> generate_bodyform_code compiler e
 
 let codegen opts compiler =
   match compiler.to_process with
-  | [] ->
-    CompileError (Srcloc.start opts.filename, "can't produce final exp yet")
+  | [] -> generate_expr_code compiler compiler.final_expr
 
   | _hd :: _tl ->
     CompileError (Srcloc.start opts.filename, "can't process forms yet")
@@ -51,6 +120,10 @@ let codegen opts compiler =
 let start_codegen _opts = function
   | Mod (l,args,helpers,expr) ->
     { prims = Prims.prims |> StringMapBuilder.go
+
+    ; env = compute_env_shape l args helpers
+
+    ; macros = StringMap.empty
 
     ; finished_code = StringMap.empty
 

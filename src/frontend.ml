@@ -12,6 +12,9 @@ let rec rename_in_cons namemap = function
       with _ ->
         Atom (l,name)
     end
+  | Cons (l,Atom (la,"q"),any) -> Cons (l,Atom (la,"q"),any)
+  | Cons (l,Atom (la,"quote"),Cons (_,v,Nil _)) ->
+    Cons (l,Atom (la,"q"),v)
   | Cons (l,head,tail) ->
     Cons (l,rename_in_cons namemap head,rename_in_cons namemap tail)
   | any -> any
@@ -177,7 +180,7 @@ and compile_helperform = function
           )
       ) ->
     compile_defun l false name args body
-    |> compMap (fun a -> Some [a])
+    |> compMap (fun a -> Some a)
 
   | Cons
       ( l
@@ -197,7 +200,7 @@ and compile_helperform = function
           )
       ) ->
     compile_defun l true name args body
-    |> compMap (fun a -> Some [a])
+    |> compMap (fun a -> Some a)
 
   | _ -> CompileOk None
 
@@ -208,6 +211,7 @@ and compile_mod_ mc opts args = function
     begin
       match mc with
       | ModAccum (l,helpers) ->
+        let _ = Js.log @@ "body " ^ to_string body in
         compile_bodyform body
         |> compMap (fun bf -> ModFinal (Mod (l,args,helpers [],bf)))
 
@@ -215,29 +219,22 @@ and compile_mod_ mc opts args = function
     end
 
   | Cons (l,form,rest) ->
+    let _ = Js.log @@ "rest " ^ to_string rest in
     compile_helperform form
     |> compBind
       (function
-        | Some formlist ->
-          List.fold_left
-            (fun ma form ->
-               ma
-               |> compBind
-                 (function
-                   | ModAccum (l,helpers) ->
-                     CompileOk (ModAccum (l, fun r -> form :: (helpers r)))
-                   | ModFinal _ ->
-                     CompileError (l, "too many expressions")
-                 )
-            )
-            (CompileOk mc)
-            formlist
-          |> compBind (fun ma -> compile_mod_ ma opts args rest)
-
         | None ->
-          CompileError
-            (l, "only the last form can be an exprssion in mod")
+          CompileError (l, "only the last form can be an exprssion in mod")
+
+        | Some form ->
+          match mc with
+          | ModAccum (l,helpers) ->
+            CompileOk (ModAccum (l, fun r -> form :: (helpers r)))
+          | ModFinal _ ->
+            CompileError (l, "too many expressions")
       )
+    |> compBind (fun ma -> compile_mod_ ma opts args rest)
+
 
   | any ->
     CompileError
@@ -262,10 +259,11 @@ let rec frontend_start opts pre_forms =
           )
       )
     ] ->
+    let _ = Js.log @@ "mod " ^ to_string body in
     preprocess opts body
     |> compBind
-      (fun b ->
-         compile_mod_ (ModAccum (l,identity)) opts args b
+      (fun ls ->
+         compile_mod_ (ModAccum (l,identity)) opts args (list_to_cons l location_of ls)
       )
 
   | (Cons (l, Atom (_,"mod"), _)) :: _ ->
@@ -355,6 +353,7 @@ let rec calculate_live_helpers opts last_names names helper_map =
       (fun new_names -> calculate_live_helpers opts names new_names helper_map)
 
 let frontend opts pre_forms =
+  let _ = Js.log @@ String.concat ";" @@ List.map to_string pre_forms in
   frontend_start opts pre_forms
   |> compBind
     (function
@@ -365,6 +364,7 @@ let frontend opts pre_forms =
   |> compBind
     (function
       | Mod (l,args,helpers,expr) ->
+        let _ = Js.log @@ to_string @@ bodyform_to_sexp l identity expr in
         let expr_names =
           StringSet.of_list @@ collect_used_names_bodyForm expr
         in
@@ -380,6 +380,12 @@ let frontend opts pre_forms =
                List.filter
                  (fun h -> StringSet.mem (name_of_helper h) helper_names)
                  helpers
+             in
+             let _ =
+               Js.log @@ String.concat ";" @@ StringSet.elements helper_names
+             in
+             let _ =
+               Js.log @@ to_string @@ bodyform_to_sexp l identity expr
              in
              Mod (l,args,live_helpers,expr)
           )

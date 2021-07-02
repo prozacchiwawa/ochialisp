@@ -189,9 +189,13 @@ and compileform_to_sexp arg_to_sexp body_to_sexp = function
           )
       )
 
+type compiledCode = Code of Srcloc.t * Srcloc.t sexp
+
 (* Code generation phase *)
 type ('arg,'body) primaryCodegen =
   { prims : Srcloc.t sexp StringMap.t
+  ; macros : Srcloc.t sexp StringMap.t
+  ; env : Srcloc.t sexp
   ; finished_code : Srcloc.t sexp StringMap.t
   ; finished_replacements : Srcloc.t sexp StringMap.t
   ; to_process : ('arg,'body) helperForm list
