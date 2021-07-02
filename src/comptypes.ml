@@ -43,10 +43,9 @@ type compilerOpts =
 
 let rec list_to_cons_ loc_of accum = function
   | [] -> accum (Nil Srcloc.start)
-  | hd :: tl ->
-    list_to_cons_ loc_of (fun t -> Cons (loc_of hd, hd, accum t)) tl
+  | hd :: tl -> list_to_cons_ loc_of (fun t -> accum (Cons (loc_of hd, hd, t))) tl
 
-let list_to_cons loc_of = list_to_cons_ loc_of (fun a -> a)
+let list_to_cons loc_of = list_to_cons_ loc_of identity
 
 type 'body binding = Binding of (Srcloc.t * string * 'body bodyForm)
 
@@ -55,9 +54,9 @@ and 'body bodyForm
   | Expr of (Srcloc.t * 'body)
 
 and ('arg, 'body) helperForm
-  = Defconstant of (Srcloc.t * 'body)
-  | Defmacro of (Srcloc.t * 'arg * ('arg, 'body) compileForm)
-  | Defun of (Srcloc.t * bool * 'arg * 'body bodyForm)
+  = Defconstant of (Srcloc.t * string * 'body)
+  | Defmacro of (Srcloc.t * string * 'arg * ('arg, 'body) compileForm)
+  | Defun of (Srcloc.t * string * bool * 'arg * 'body bodyForm)
   | TopExpr of (Srcloc.t * 'body bodyForm)
 
 and ('arg, 'body) compileForm
@@ -116,34 +115,46 @@ let loc_of_compileform = function
   | Mod (l,_,_,_) -> l
 
 let rec helperform_to_sexp arg_to_sexp body_to_sexp = function
-  | Defconstant (l,b) ->
+  | Defconstant (l,n,b) ->
     Cons
       ( l
       , Atom (l, "defconstant")
       , Cons
           ( l
-          , body_to_sexp b
-          , Nil l
+          , Atom (l, n)
+          , Cons
+              ( l
+              , body_to_sexp b
+              , Nil l
+              )
           )
       )
-  | Defmacro (l,a,b) ->
+  | Defmacro (l,n,a,b) ->
     Cons
       ( l
       , Atom (l, "defmacro")
       , Cons
           ( l
-          , arg_to_sexp a
-          , compileform_to_sexp arg_to_sexp body_to_sexp b
+          , Atom (l,n)
+          , Cons
+              ( l
+              , arg_to_sexp a
+              , compileform_to_sexp arg_to_sexp body_to_sexp b
+              )
           )
       )
-  | Defun (l,inline,a,b) ->
+  | Defun (l,n,inline,a,b) ->
     Cons
       (l
       , Atom (l, if inline then "defun-inline" else "defun")
       , Cons
           ( l
-          , arg_to_sexp a
-          , bodyform_to_sexp body_to_sexp b
+          , Atom (l,n)
+          , Cons
+              ( l
+              , arg_to_sexp a
+              , bodyform_to_sexp body_to_sexp b
+              )
           )
       )
 

@@ -53,26 +53,35 @@ let rec rename_in_bodyform namemap = function
     in
     Let (l, new_bindings, rename_in_bodyform namemap locally_renamed_body)
 
-  | Expr (l, e) -> Expr (l, rename_in_cons namemap e)
+  | Expr (l, e) ->
+    Expr (l, rename_in_cons namemap e)
 
 and rename_in_helperform namemap = function
-  | Defmacro (l,arg,body) ->
+  | Defconstant (l,n,body) ->
+    Defconstant
+      ( l
+      , n
+      , rename_in_cons namemap body
+      )
+  | Defmacro (l,n,arg,body) ->
     let new_names = invent_new_names_sexp arg in
     let local_namemap = new_names |> StringMapBuilder.go in
     let local_renamed_arg = rename_in_cons local_namemap arg in
     let local_renamed_body = rename_in_compileform local_namemap body in
     Defmacro
       ( l
+      , n
       , local_renamed_arg
       , rename_in_compileform namemap local_renamed_body
       )
-  | Defun (l,inline,arg,body) ->
+  | Defun (l,n,inline,arg,body) ->
     let new_names = invent_new_names_sexp arg in
     let local_namemap = new_names |> StringMapBuilder.go in
     let local_renamed_arg = rename_in_cons local_namemap arg in
     let local_renamed_body = rename_in_bodyform local_namemap body in
     Defun
       ( l
+      , n
       , inline
       , local_renamed_arg
       , rename_in_bodyform namemap local_renamed_body
@@ -120,48 +129,78 @@ let rec compile_bodyform opts = function
 
   | any -> CompileOk (Expr (location_of any,any))
 
-and compile_defun opts l _inline _args _body =
-  CompileError (opts.filename, l, "can't yet compile defun")
+and compile_defun opts l inline name args body =
+  compile_bodyform opts body
+  |> compMap (fun bf -> Defun (l, name, inline, args, bf))
 
 and compile_helperform opts = function
-  | Cons (l, Atom (_, "defconstant"), Cons (_, _body, Nil _)) ->
+  | Cons
+      ( l
+      , Atom (_, "defconstant")
+      , Cons
+          ( _
+          , Atom (_,_name)
+          , Cons
+              ( _
+              , _body
+              , Nil _
+              )
+          )
+      ) ->
     CompileError (opts.filename, l, "can't yet compile defconstant")
+
   | Cons
       ( l
       , Atom (_, "defmacro")
       , Cons
           ( _
-          , _args
-          , _body
+          , Atom (_,_name)
+          , Cons
+              ( _
+              , _args
+              , _body
+              )
           )
       ) ->
     CompileError (opts.filename, l, "can't yet compile defmacro")
+
   | Cons
       ( l
       , Atom (_, "defun")
       , Cons
           ( _
-          , args
+          , Atom (_,name)
           , Cons
               ( _
-              , body
-              , Nil _
+              , args
+              , Cons
+                  ( _
+                  , body
+                  , Nil _
+                  )
               )
           )
-      ) -> compile_defun opts l false args body
+      ) ->
+    compile_defun opts l false name args body
+
   | Cons
       ( l
       , Atom (_, "defun-inline")
       , Cons
           ( _
-          , args
+          , Atom (_,name)
           , Cons
               ( _
-              , body
-              , Nil _
+              , args
+              , Cons
+                  ( _
+                  , body
+                  , Nil _
+                  )
               )
           )
-      ) -> compile_defun opts l true args body
+      ) -> compile_defun opts l true name args body
+
   | any ->
     compile_bodyform opts any
     |> compMap (fun f -> TopExpr (location_of any, f))
@@ -186,7 +225,7 @@ and compile_mod_ mc opts args = function
         compile_helperform opts form
         |> compBind
           (fun form ->
-             compile_mod_ (ModAccum (l, fun r -> form :: helpers r)) opts args rest
+             compile_mod_ (ModAccum (l, fun r -> form :: (helpers r))) opts args rest
           )
 
       | ModFinal _ -> CompileError (opts.filename, l, "too many expressions")
@@ -252,6 +291,7 @@ let compile_file opts content : string compileResult =
         | ModAccum (loc, _) -> CompileError (opts.filename, loc, "mod must end on expression")
         | ModFinal m -> CompileOk m
       )
+    |> compMap (rename_in_compileform StringMap.empty)
     |> compBind
       (function
         | Mod (l,args,helpers,expr) ->
