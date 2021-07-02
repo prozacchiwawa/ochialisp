@@ -4,8 +4,6 @@ type 'loc sexp
   | Integer of ('loc * string)
   | QuotedString of ('loc * char * string)
   | Atom of ('loc * string)
-  | Comment of ('loc * string)
-  | EmptyLine of 'loc
 
 let location_of = function
   | Nil l -> l
@@ -13,8 +11,6 @@ let location_of = function
   | Integer (l,_) -> l
   | QuotedString (l,_,_) -> l
   | Atom (l,_) -> l
-  | Comment (l,_) -> l
-  | EmptyLine l -> l
 
 let make_cons ext a b = Cons (ext (location_of a) (location_of b), a, b)
 
@@ -96,18 +92,6 @@ let rec sexp_to_json l2j = function
     ]
     |> Js.Dict.fromList
     |> Js.Json.object_
-  | Comment (l,c) ->
-    [ ("comment", Js.Json.string c)
-    ; ("location", l2j l)
-    ]
-    |> Js.Dict.fromList
-    |> Js.Json.object_
-  | EmptyLine l ->
-    [ ("line", Js.Json.boolean true)
-    ; ("location", l2j l)
-    ]
-    |> Js.Dict.fromList
-    |> Js.Json.object_
 
 let isspace = function
   | ' ' -> true
@@ -122,7 +106,7 @@ let rec parse_sexp_step (ext : 'loc -> 'loc -> 'loc) (loc : 'loc) : 'loc sexpPar
     begin
       function
       | '(' -> resume @@ OpenList loc
-      | '\n' -> emit (EmptyLine loc) Empty
+      | '\n' -> resume @@ Empty
       | ';' -> resume @@ CommentText (loc, "")
       | ')' -> error loc "Too many close parens"
       | '"' -> resume @@ Quoted (loc, '"', "")
@@ -137,7 +121,7 @@ let rec parse_sexp_step (ext : 'loc -> 'loc -> 'loc) (loc : 'loc) : 'loc sexpPar
     begin
       function
       | '\r' -> resume @@ CommentText (pl, t)
-      | '\n' -> emit (Comment (pl,t)) Empty
+      | '\n' -> resume @@ Empty
       | x -> resume @@ CommentText (ext pl loc, t ^ (String.make 1 x))
     end
   | Bareword (pl, a) ->
@@ -243,7 +227,7 @@ let rec parse_sexp_inner ext start advance p n s =
     match p with
     | Empty -> Success []
     | Bareword (l, t) -> Success [Atom (l,t)]
-    | CommentText (l, t) -> Success [Comment (l,t)]
+    | CommentText (l, t) -> Success []
     | Quoted (l, _, _) -> Failure (l, "unterminated quoted string")
     | QuotedEscaped (l, _, _) -> Failure (l, "unterminated quoted string with escape")
     | OpenList l -> Failure (l, "Unterminated list (empty)")
@@ -282,8 +266,6 @@ let rec to_string = function
   | Integer (_,v) -> v
   | QuotedString (_,q,s) -> "\"" ^ (escape_quote q s) ^ "\""
   | Atom (_,a) -> a
-  | Comment _ -> ""
-  | EmptyLine _ -> ""
 
 and list_no_parens = function
   | (a,Nil _) -> to_string a
@@ -366,8 +348,6 @@ let encode_int_to_bigint v =
   BigInteger.toString (BigInteger.bigInt (`String v)) ~base:16 ()
 
 let rec encode : 'a sexp -> string = function
-  | Comment (_,_) -> ""
-  | EmptyLine _ -> ""
   | Nil _ -> "80"
   | Cons (_,a,b) -> "ff" ^ (encode a) ^ (encode b)
   | Integer (_,v) -> encode_integer_value v
@@ -378,23 +358,6 @@ let rec encode : 'a sexp -> string = function
 
 let intval v =
   BigInteger.toJSNumber (BigInteger.bigInt (`String v))
-
-let rec strip_useless_sexp =
-  function
-  | Cons (_, Comment _, tl) -> strip_useless_sexp tl
-  | Cons (_, EmptyLine _, tl) -> strip_useless_sexp tl
-  | Cons (l, allowed, tl) -> Cons (l, allowed, strip_useless_sexp tl)
-  | form -> form
-
-let is_useless = function
-  | Comment _ -> true
-  | EmptyLine _ -> true
-  | _ -> false
-
-let strip_useless pre_forms =
-  List.map
-    strip_useless_sexp
-    (List.filter (fun form -> not (is_useless form)) pre_forms)
 
 let rec equal a b =
   if nilp a && nilp b then
@@ -408,4 +371,3 @@ let rec equal a b =
     | (Cons (_,_,_), _) -> false
     | (_, Cons (_,_,_)) -> false
     | (a,b) -> encode a == encode b
-

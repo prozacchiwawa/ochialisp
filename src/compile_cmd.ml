@@ -1,3 +1,6 @@
+open Comptypes
+open Compiler
+    
 type arg_process =
   { includeDirs : string list
   ; nextInclude : bool
@@ -42,15 +45,15 @@ let main args =
        let input =
          Node.Fs.readFileSync infile `utf8
        in
-       let opts : Compiler.compilerOpts =
+       let opts : compilerOpts =
          { includeDirs = ap.includeDirs
          ; filename = infile
          ; assemble = not ap.noAssemble
          ; readNewFile = fun _ _ name ->
              if name == "*macros*" then
-               Compiler.CompileOk (name, String.concat "\n" Macros.macros)
+               CompileOk (name, String.concat "\n" Macros.macros)
              else
-               Compiler.CompileError (name, Srcloc.start, "include unimplemented for name " ^ name)
+               CompileError (name, Srcloc.start, "include unimplemented for name " ^ name)
          }
        in
        let result = Compiler.compile_file opts input in

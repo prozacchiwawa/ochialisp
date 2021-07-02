@@ -1,3 +1,4 @@
+open Comptypes
 open Clvm
 open Compiler
 
@@ -19,9 +20,9 @@ let emptyOpts =
   ; assemble = true
   ; readNewFile = fun _ _ name ->
       if name == "*macros*" then
-        Compiler.CompileOk (name, String.concat "\n" Macros.macros)
+        CompileOk (name, String.concat "\n" Macros.macros)
       else
-        Compiler.CompileError (name, Srcloc.start, "include unimplemented for name " ^ name)
+        CompileError (name, Srcloc.start, "include unimplemented for name " ^ name)
   }
 
 let emptyCompile = { emptyOpts with assemble = true }
@@ -31,9 +32,9 @@ let tests =
     ; opts = emptyOpts
     ; input = "()"
     }
-  ; { expected = CompileOk "80"
-    ; opts = emptyOpts
-    ; input = "(mod () ())"
+  ; { expected = CompileOk "(c (q . \"hi\") (c (q . 10) ()))"
+    ; opts = { emptyOpts with assemble = false }
+    ; input = "(mod () (defmacro testmacro (A) (qq (q \"hi\" (unquote (+ 1 A))))) (testmacro 9))"
     }
   ]
 

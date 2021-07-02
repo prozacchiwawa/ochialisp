@@ -191,6 +191,7 @@ let rec run sexp context =
       |> runMap
         (fun s ->
            let hasher = Hash.create () in
+           let _ = Hash.update hasher s in
            Integer (l, "0x" ^ Hash.hex hasher)
         )
     | ( Integer (_,"12")
@@ -440,8 +441,6 @@ let rec run sexp context =
            eval_args b
            |> runBind (apply_op l head)
       )
-  | Comment (l,_) -> RunError (l, "comment isn't executable")
-  | EmptyLine l -> RunError (l, "emptyline isn't executable")
 
 let parse_and_run content args =
   let parse_result =
@@ -461,7 +460,7 @@ let parse_and_run content args =
   match (parse_result, parse_args) with
   | (Sexp.Success code, Sexp.Success args) ->
     begin
-      match (strip_useless code, strip_useless args) with
+      match (code, args) with
       | (real_code :: _, real_args :: _) ->
         run real_code real_args
       | ([], _) ->
