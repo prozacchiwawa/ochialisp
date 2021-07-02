@@ -45,22 +45,28 @@ let rec list_to_cons_ loc_of accum = function
   | [] -> accum (Nil Srcloc.start)
   | hd :: tl -> list_to_cons_ loc_of (fun t -> accum (Cons (loc_of hd, hd, t))) tl
 
+(* Turn an ocaml list into an sexp list *)
 let list_to_cons loc_of = list_to_cons_ loc_of identity
 
+(* A binding for a let *)
 type 'body binding = Binding of (Srcloc.t * string * 'body bodyForm)
 
+(* An expression body or a let form *)
 and 'body bodyForm
   = Let of (Srcloc.t * 'body binding list * 'body bodyForm)
   | Expr of (Srcloc.t * 'body)
 
+(* Frontend mod forms (toplevel forms in tranditional lisp) *)
 and ('arg, 'body) helperForm
   = Defconstant of (Srcloc.t * string * 'body bodyForm)
   | Defmacro of (Srcloc.t * string * 'arg * ('arg, 'body) compileForm)
   | Defun of (Srcloc.t * string * bool * 'arg * 'body bodyForm)
 
+(* Mod form *)
 and ('arg, 'body) compileForm
   = Mod of (Srcloc.t * 'arg * ('arg, 'body) helperForm list * 'body bodyForm)
 
+(* Frontend uses this to accumulate frontend forms *)
 type ('arg, 'body) modAccumulator
   = ModAccum of
     (Srcloc.t * (('arg, 'body) helperForm list -> ('arg, 'body) helperForm list))
@@ -113,6 +119,7 @@ and bodyform_to_sexp (body_to_sexp : 'body -> Srcloc.t sexp) :
 let loc_of_compileform = function
   | Mod (l,_,_,_) -> l
 
+(* Serialize frontend forms to sexp for debugging *)
 let rec helperform_to_sexp arg_to_sexp body_to_sexp = function
   | Defconstant (l,n,b) ->
     Cons
@@ -181,3 +188,13 @@ and compileform_to_sexp arg_to_sexp body_to_sexp = function
             )
           )
       )
+
+(* Code generation phase *)
+type ('arg,'body) primaryCodegen =
+  { prims : Srcloc.t sexp StringMap.t
+  ; finished_code : Srcloc.t sexp StringMap.t
+  ; finished_replacements : Srcloc.t sexp StringMap.t
+  ; to_process : ('arg,'body) helperForm list
+  ; final_expr : 'body bodyForm
+  ; environment_shape : Srcloc.t sexp
+  }
