@@ -1,7 +1,7 @@
 open Sexp
 open Comptypes
 
-let process_include opts l name =
+let process_include opts name =
   opts.readNewFile opts opts.filename name
   |> compBind
     (fun (_,content) ->
@@ -15,40 +15,30 @@ let process_include opts l name =
        match parse_result with
        | Sexp.Failure (loc, err) -> CompileError (loc, err)
        | Sexp.Success pre_forms ->
-         CompileOk
-           [ Cons
-               ( l
-               , Atom (l,"_$_include")
-               , Cons
-                   ( l
-                   , QuotedString (l,'\"',name)
-                   , list_to_cons l location_of pre_forms
-                   )
-               )
-           ]
+         CompileOk pre_forms
     )
 
 (* Expand include inline in forms *)
 let process_pp_form opts = function
   | Cons
-      ( l
+      ( _
       , Atom (_,"include")
       , Cons
           ( _
           , Atom (_,name)
           , Nil _
           )
-      ) -> process_include opts l name
+      ) -> process_include opts name
 
   | Cons
-      ( l
+      ( _
       , Atom (_,"include")
       , Cons
           ( _
           , QuotedString (_,_,name)
           , Nil _
           )
-      ) -> process_include opts l name
+      ) -> process_include opts name
 
   | Cons
       ( l

@@ -128,35 +128,7 @@ and compile_defun l inline name args body =
   compile_bodyform body
   |> compMap (fun bf -> Defun (l, name, inline, args, bf))
 
-and compile_helperform_inc opts = function
-  | Nil _l -> CompileOk []
-  | Cons (l,head,rest) ->
-    compile_helperform opts head
-    |> compBind
-      (function
-        | None ->
-          CompileError
-            (l, "includes can't yet contain the final expr")
-
-        | Some forms ->
-          compile_helperform_inc opts rest
-          |> compMap (fun r -> List.concat [forms;r])
-      )
-  | any -> CompileError (location_of any, "not a proper tail cons")
-
-and compile_helperform opts = function
-  | Cons
-      ( _l
-      , Atom (_, "_$_include")
-      , Cons
-          ( _
-          , QuotedString (_,_,name)
-          , forms
-          )
-      ) ->
-    compile_helperform_inc { opts with filename = name } forms
-    |> compMap (fun a -> Some a)
-
+and compile_helperform = function
   | Cons
       ( l
       , Atom (_, "defconstant")
@@ -243,7 +215,7 @@ and compile_mod_ mc opts args = function
     end
 
   | Cons (l,form,rest) ->
-    compile_helperform opts form
+    compile_helperform form
     |> compBind
       (function
         | Some formlist ->
