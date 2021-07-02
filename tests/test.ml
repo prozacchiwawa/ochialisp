@@ -30,7 +30,7 @@ let emptyCompile = { emptyOpts with assemble = true }
 let tests =
   [ { expected = CompileOk "80"
     ; opts = emptyOpts
-    ; input = "(mod (a) (defun f () a) ())"
+    ; input = "(mod (a) (defun f () (+ (f) a)) ())"
     }
   ; { expected = CompileOk "(c (q . \"hi\") (c (q . 10) ()))"
     ; opts = { emptyOpts with assemble = false }

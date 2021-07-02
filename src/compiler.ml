@@ -61,7 +61,7 @@ and rename_in_helperform namemap = function
     Defconstant
       ( l
       , n
-      , rename_in_cons namemap body
+      , rename_in_bodyform namemap body
       )
   | Defmacro (l,n,arg,body) ->
     let new_names = invent_new_names_sexp arg in
@@ -86,7 +86,6 @@ and rename_in_helperform namemap = function
       , local_renamed_arg
       , rename_in_bodyform namemap local_renamed_body
       )
-  | any -> any
 
 and rename_in_compileform namemap = function
   | Mod (l,arg,helpers,body) ->
@@ -182,6 +181,7 @@ and compile_helperform opts = function
           )
       ) ->
     compile_defun opts l false name args body
+    |> compMap (fun a -> Some a)
 
   | Cons
       ( l
@@ -199,11 +199,11 @@ and compile_helperform opts = function
                   )
               )
           )
-      ) -> compile_defun opts l true name args body
+      ) ->
+    compile_defun opts l true name args body
+    |> compMap (fun a -> Some a)
 
-  | any ->
-    compile_bodyform opts any
-    |> compMap (fun f -> TopExpr (location_of any, f))
+  | _ -> CompileOk None
 
 and compile_mod_ mc opts args = function
   | Nil l -> CompileError (opts.filename, l, "no expression at end of mod")
@@ -224,8 +224,11 @@ and compile_mod_ mc opts args = function
       | ModAccum (l,helpers) ->
         compile_helperform opts form
         |> compBind
-          (fun form ->
-             compile_mod_ (ModAccum (l, fun r -> form :: (helpers r))) opts args rest
+          (function
+            | Some form ->
+              compile_mod_ (ModAccum (l, fun r -> form :: (helpers r))) opts args rest
+            | None ->
+              CompileError (opts.filename, l, "only the last form can be an exprssion in mod")
           )
 
       | ModFinal _ -> CompileError (opts.filename, l, "too many expressions")
@@ -274,6 +277,70 @@ let rec compile_to_assembler opts pre_forms =
           )
       ]
 
+let rec collect_used_names_sexp = function
+  | Atom (_,name) -> [name]
+  | Cons (_,head,tail) ->
+    List.concat [collect_used_names_sexp head;collect_used_names_sexp tail]
+  | _ -> []
+
+let rec collect_used_names_binding = function
+  | Binding (_,_,expr) -> collect_used_names_bodyForm expr
+
+and collect_used_names_bodyForm = function
+  | Let (_,bindings,expr) ->
+    List.concat
+      [ List.concat (List.map collect_used_names_binding bindings)
+      ; collect_used_names_bodyForm expr
+      ]
+  | Expr (_,e) -> collect_used_names_sexp e
+
+and collect_used_names_helperForm = function
+  | Defconstant (_,_,value) -> collect_used_names_bodyForm value
+  | Defmacro (_,_,_,body) -> collect_used_names_compileForm body
+  | Defun (_,_,_,_,body) -> collect_used_names_bodyForm body
+
+and collect_used_names_compileForm = function
+  | Mod (_,_,helpers,expr) ->
+    List.concat
+      [ List.concat (List.map collect_used_names_helperForm helpers)
+      ; collect_used_names_bodyForm expr
+      ]
+
+let name_of_helper = function
+  | Defconstant (_,n,_) -> n
+  | Defmacro (_,n,_,_) -> n
+  | Defun (_,n,_,_,_) -> n
+
+let rec calculate_live_helpers opts last_names names helper_map =
+  if StringSet.cardinal last_names = StringSet.cardinal names then
+    CompileOk names
+  else
+    let new_names = StringSet.diff last_names names in
+    List.fold_left
+      (fun already_found name ->
+         already_found
+         |> compBind
+           (fun found ->
+              try
+                let new_helper = StringMap.find name helper_map in
+                let even_newer_names =
+                  collect_used_names_helperForm new_helper
+                in
+                CompileOk
+                  (StringSet.union found (StringSet.of_list even_newer_names))
+              with _ ->
+                CompileError
+                  ( opts.filename
+                  , Srcloc.start
+                  , Printf.sprintf "unbound name %s" name
+                  )
+           )
+      )
+      (CompileOk names)
+      (StringSet.elements new_names)
+    |> compBind
+      (fun new_names -> calculate_live_helpers opts names new_names helper_map)
+
 let compile_file opts content : string compileResult =
   let parse_result =
     parse_sexp
@@ -295,7 +362,24 @@ let compile_file opts content : string compileResult =
     |> compBind
       (function
         | Mod (l,args,helpers,expr) ->
-          CompileError (opts.filename, l, to_string (compileform_to_sexp identity identity (Mod (l,args,helpers,expr))))
+          let expr_names =
+            StringSet.of_list @@ collect_used_names_bodyForm expr
+          in
+          let helper_map =
+            helpers
+            |> List.map (fun h -> (name_of_helper h, h))
+            |> StringMapBuilder.go
+          in
+          calculate_live_helpers opts StringSet.empty expr_names helper_map
+          |> compBind
+            (fun helper_names ->
+               let live_helpers =
+                 List.filter
+                   (fun h -> StringSet.mem (name_of_helper h) helper_names)
+                   helpers
+               in
+               CompileError (opts.filename, l, to_string (compileform_to_sexp identity identity (Mod (l,args,live_helpers,expr))))
+            )
 (*
          if opts.assemble then
            Sexp.encode result

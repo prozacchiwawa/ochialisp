@@ -54,10 +54,9 @@ and 'body bodyForm
   | Expr of (Srcloc.t * 'body)
 
 and ('arg, 'body) helperForm
-  = Defconstant of (Srcloc.t * string * 'body)
+  = Defconstant of (Srcloc.t * string * 'body bodyForm)
   | Defmacro of (Srcloc.t * string * 'arg * ('arg, 'body) compileForm)
   | Defun of (Srcloc.t * string * bool * 'arg * 'body bodyForm)
-  | TopExpr of (Srcloc.t * 'body bodyForm)
 
 and ('arg, 'body) compileForm
   = Mod of (Srcloc.t * 'arg * ('arg, 'body) helperForm list * 'body bodyForm)
@@ -124,7 +123,7 @@ let rec helperform_to_sexp arg_to_sexp body_to_sexp = function
           , Atom (l, n)
           , Cons
               ( l
-              , body_to_sexp b
+              , bodyform_to_sexp body_to_sexp b
               , Nil l
               )
           )
@@ -139,7 +138,11 @@ let rec helperform_to_sexp arg_to_sexp body_to_sexp = function
           , Cons
               ( l
               , arg_to_sexp a
-              , compileform_to_sexp arg_to_sexp body_to_sexp b
+              , Cons
+                  ( l
+                  , compileform_to_sexp arg_to_sexp body_to_sexp b
+                  , Nil l
+                  )
               )
           )
       )
@@ -153,12 +156,14 @@ let rec helperform_to_sexp arg_to_sexp body_to_sexp = function
           , Cons
               ( l
               , arg_to_sexp a
-              , bodyform_to_sexp body_to_sexp b
+              , Cons
+                  ( l
+                  , bodyform_to_sexp body_to_sexp b
+                  , Nil l
+                  )
               )
           )
       )
-
-  | TopExpr (_,e) -> bodyform_to_sexp body_to_sexp e
 
 and compileform_to_sexp arg_to_sexp body_to_sexp = function
   | Mod (l, args, helpers, exp) ->
