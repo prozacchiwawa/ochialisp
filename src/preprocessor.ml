@@ -8,12 +8,12 @@ let process_include opts l name =
        let parse_result =
          parse_sexp
            Srcloc.combineSrcLocation
-           Srcloc.start
+           (Srcloc.start opts.filename)
            Srcloc.advance
            content
        in
        match parse_result with
-       | Sexp.Failure (loc, err) -> CompileError (name, loc, err)
+       | Sexp.Failure (loc, err) -> CompileError (loc, err)
        | Sexp.Success pre_forms ->
          CompileOk
            [ Cons
@@ -22,7 +22,7 @@ let process_include opts l name =
                , Cons
                    ( l
                    , QuotedString (l,'\"',name)
-                   , list_to_cons location_of pre_forms
+                   , list_to_cons l location_of pre_forms
                    )
                )
            ]
@@ -56,8 +56,7 @@ let process_pp_form opts = function
       , any
       ) ->
     CompileError
-      ( opts.filename
-      , l
+      ( l
       , Printf.sprintf "bad tail %s in include" (to_string any)
       )
 

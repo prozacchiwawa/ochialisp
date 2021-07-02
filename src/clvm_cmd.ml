@@ -8,7 +8,7 @@ let main args =
   | [infile;args] ->
     begin
       let incode = Node.Fs.readFileSync infile `utf8 in
-      match Clvm.parse_and_run incode args with
+      match Clvm.parse_and_run infile incode args with
       | Clvm.RunOk v -> Printf.printf "%s" (to_string v)
       | Clvm.RunExn (l,e) ->
         Printf.printf "%s(%s): throw(x) %s\n" infile (Srcloc.toString l) (to_string e)

@@ -34,8 +34,19 @@ let compute_env_shape l args helpers =
   Cons (l, car, cdr)
 
 (* XXX *)
+let create_name_lookup l _name _env = Integer (l, "1")
+
+(* XXX *)
 let codegen_to_sexp _codegen =
   Cons (Srcloc.start, Atom (Srcloc.start, "codegen"), Nil Srcloc.start)
+
+let codegen opts compiler =
+  match compiler.to_process with
+  | [] ->
+    CompileError (Srcloc.start opts.filename, "can't produce final exp yet")
+
+  | _hd :: _tl ->
+    CompileError (Srcloc.start opts.filename, "can't process forms yet")
 
 let start_codegen _opts = function
   | Mod (l,args,helpers,expr) ->
@@ -55,4 +66,4 @@ let start_codegen _opts = function
 let codegen opts cmod =
   let compiler = start_codegen opts cmod in
   let _ = Js.log @@ to_string @@ codegen_to_sexp compiler in
-  CompileError (opts.filename, Srcloc.start, "can't produce code yet")
+  codegen opts compiler

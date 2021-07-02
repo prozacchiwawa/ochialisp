@@ -22,7 +22,7 @@ let emptyOpts =
       if name == "*macros*" then
         CompileOk (name, String.concat "\n" Macros.macros)
       else
-        CompileError (name, Srcloc.start, "include unimplemented for name " ^ name)
+        CompileError (Srcloc.start name, "include unimplemented for name " ^ name)
   }
 
 let emptyCompile = { emptyOpts with assemble = true }
@@ -55,7 +55,7 @@ let _ =
     clvm_tests
     |> List.iteri
       (fun i e ->
-         let cr = parse_and_run e.input e.args |> runMap Sexp.to_string in
+         let cr = parse_and_run "*clvm*" e.input e.args |> runMap Sexp.to_string in
          if cr <> e.expected then
            begin
              failed := true ;

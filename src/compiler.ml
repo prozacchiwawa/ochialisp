@@ -1,6 +1,5 @@
 open Sexp
 open Comptypes
-open Preprocessor
 open Frontend
 open Codegen
 
@@ -8,12 +7,12 @@ let compile_file opts content : string compileResult =
   let parse_result =
     parse_sexp
       Srcloc.combineSrcLocation
-      Srcloc.start
+      (Srcloc.start opts.filename)
       Srcloc.advance
       content
   in
   match parse_result with
-  | Sexp.Failure (loc, err) -> CompileError (opts.filename, loc, err)
+  | Sexp.Failure (loc, err) -> CompileError (loc, err)
   | Sexp.Success pre_forms ->
     frontend opts pre_forms
     |> compBind

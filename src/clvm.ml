@@ -442,18 +442,18 @@ let rec run sexp context =
            |> runBind (apply_op l head)
       )
 
-let parse_and_run content args =
+let parse_and_run file content args =
   let parse_result =
     parse_sexp
       Srcloc.combineSrcLocation
-      Srcloc.start
+      (Srcloc.start file)
       Srcloc.advance
       content
   in
   let parse_args =
     parse_sexp
       Srcloc.combineSrcLocation
-      Srcloc.start
+      (Srcloc.start file)
       Srcloc.advance
       args
   in
@@ -464,9 +464,9 @@ let parse_and_run content args =
       | (real_code :: _, real_args :: _) ->
         run real_code real_args
       | ([], _) ->
-        RunError (Srcloc.start, "no code")
+        RunError (Srcloc.start file, "no code")
       | (_, []) ->
-        RunError (Srcloc.start, "no args")
+        RunError (Srcloc.start file, "no args")
     end
   | (_, Sexp.Failure (l,m)) ->
     RunError (l,m)

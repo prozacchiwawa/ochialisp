@@ -99,7 +99,7 @@ and rename_in_compileform namemap = function
       , rename_in_bodyform namemap local_renamed_body
       )
 
-let rec compile_bodyform opts = function
+let rec compile_bodyform = function
   | Cons
       ( l
       , Atom ( _, "let" )
@@ -113,19 +113,19 @@ let rec compile_bodyform opts = function
               )
           )
       ) ->
-    CompileError (opts.filename,l,"can't yet compile let")
+    CompileError (l,"can't yet compile let")
 
   | Cons
       ( l
       , Atom (_, "let" )
       , _
       ) ->
-    CompileError (opts.filename,l,"bad let form")
+    CompileError (l,"bad let form")
 
   | any -> CompileOk (Expr (location_of any,any))
 
-and compile_defun opts l inline name args body =
-  compile_bodyform opts body
+and compile_defun l inline name args body =
+  compile_bodyform body
   |> compMap (fun bf -> Defun (l, name, inline, args, bf))
 
 and compile_helperform_inc opts = function
@@ -136,13 +136,13 @@ and compile_helperform_inc opts = function
       (function
         | None ->
           CompileError
-            (opts.filename, l, "includes can't yet contain the final expr")
+            (l, "includes can't yet contain the final expr")
 
         | Some forms ->
           compile_helperform_inc opts rest
           |> compMap (fun r -> List.concat [forms;r])
       )
-  | any -> CompileError (opts.filename, location_of any, "not a proper tail cons")
+  | any -> CompileError (location_of any, "not a proper tail cons")
 
 and compile_helperform opts = function
   | Cons
@@ -170,7 +170,7 @@ and compile_helperform opts = function
               )
           )
       ) ->
-    CompileError (opts.filename, l, "can't yet compile defconstant")
+    CompileError (l, "can't yet compile defconstant")
 
   | Cons
       ( l
@@ -185,7 +185,7 @@ and compile_helperform opts = function
               )
           )
       ) ->
-    CompileError (opts.filename, l, "can't yet compile defmacro")
+    CompileError (l, "can't yet compile defmacro")
 
   | Cons
       ( l
@@ -204,7 +204,7 @@ and compile_helperform opts = function
               )
           )
       ) ->
-    compile_defun opts l false name args body
+    compile_defun l false name args body
     |> compMap (fun a -> Some [a])
 
   | Cons
@@ -224,22 +224,22 @@ and compile_helperform opts = function
               )
           )
       ) ->
-    compile_defun opts l true name args body
+    compile_defun l true name args body
     |> compMap (fun a -> Some [a])
 
   | _ -> CompileOk None
 
 and compile_mod_ mc opts args = function
-  | Nil l -> CompileError (opts.filename, l, "no expression at end of mod")
+  | Nil l -> CompileError (l, "no expression at end of mod")
 
   | Cons (l,body,Nil _) ->
     begin
       match mc with
       | ModAccum (l,helpers) ->
-        compile_bodyform opts body
+        compile_bodyform body
         |> compMap (fun bf -> ModFinal (Mod (l,args,helpers [],bf)))
 
-      | ModFinal _ -> CompileError (opts.filename, l, "too many expressions")
+      | ModFinal _ -> CompileError (l, "too many expressions")
     end
 
   | Cons (l,form,rest) ->
@@ -255,7 +255,7 @@ and compile_mod_ mc opts args = function
                    | ModAccum (l,helpers) ->
                      CompileOk (ModAccum (l, fun r -> form :: (helpers r)))
                    | ModFinal _ ->
-                     CompileError (opts.filename, l, "too many expressions")
+                     CompileError (l, "too many expressions")
                  )
             )
             (CompileOk mc)
@@ -264,13 +264,12 @@ and compile_mod_ mc opts args = function
 
         | None ->
           CompileError
-            (opts.filename, l, "only the last form can be an exprssion in mod")
+            (l, "only the last form can be an exprssion in mod")
       )
 
   | any ->
     CompileError
-      ( opts.filename
-      , location_of any
+      ( location_of any
       , Printf.sprintf "inappropriate sexp %s" (to_string any)
       )
 
@@ -278,7 +277,7 @@ let rec frontend_start opts pre_forms =
   match pre_forms with
   | [] ->
     CompileError
-      (opts.filename, Srcloc.start, "empty source file not allowed")
+      (Srcloc.start opts.filename, "empty source file not allowed")
 
   | [ ( Cons
           ( l
@@ -299,7 +298,7 @@ let rec frontend_start opts pre_forms =
 
   | (Cons (l, Atom (_,"mod"), _)) :: _ ->
     CompileError
-      (opts.filename, l, "one toplevel mod form allowed")
+      (l, "one toplevel mod form allowed")
 
   | hd :: _tl ->
     let loc = location_of hd in
@@ -310,7 +309,7 @@ let rec frontend_start opts pre_forms =
           , Cons
               ( loc
               , Nil loc
-              , list_to_cons location_of pre_forms
+              , list_to_cons loc location_of pre_forms
               )
           )
       ]
@@ -373,8 +372,7 @@ let rec calculate_live_helpers opts last_names names helper_map =
                   (StringSet.union found (StringSet.of_list even_newer_names))
               with _ ->
                 CompileError
-                  ( opts.filename
-                  , Srcloc.start
+                  ( Srcloc.start opts.filename
                   , Printf.sprintf "unbound name %s" name
                   )
            )
@@ -388,7 +386,7 @@ let frontend opts pre_forms =
   frontend_start opts pre_forms
   |> compBind
     (function
-      | ModAccum (loc, _) -> CompileError (opts.filename, loc, "mod must end on expression")
+      | ModAccum (loc, _) -> CompileError (loc, "mod must end on expression")
       | ModFinal m -> CompileOk m
     )
   |> compMap (rename_in_compileform StringMap.empty)

@@ -1,5 +1,6 @@
 type t =
-  { line : int
+  { file : string
+  ; line : int
   ; col : int
   ; until : (int * int) option
   }
@@ -24,16 +25,14 @@ let srcLocationToJson sl =
 
 let toString a =
   match a.until with
-  | None -> Printf.sprintf "%d:%d" a.line a.col
-  | Some (l,c) -> Printf.sprintf "%d:%d-%d:%d" a.line a.col l c
+  | None -> Printf.sprintf "%s(%d):%d" a.file a.line a.col
+  | Some (l,c) -> Printf.sprintf "%s(%d):%d-%s(%d):%d" a.file a.line a.col a.file l c
 
 let srcLocationMin a = (a.line, a.col)
 let srcLocationMax a =
   match a.until with
   | None -> (a.line, a.col + 1)
   | Some (ll,cc) -> (ll,cc)
-
-let fromPair (l,c) = { line = l ; col = c ; until = None }
 
 let combineSrcLocation a b =
   let addOnto x y = { x with until = Some (srcLocationMax y) } in
@@ -49,7 +48,7 @@ let combineSrcLocation a b =
   else
     addOnto b a
 
-let start = { line = 1 ; col = 1 ; until = None }
+let start file = { file = file ; line = 1 ; col = 1 ; until = None }
 let advance loc =
   function
   | '\n' -> { loc with col = 1 ; line = loc.line + 1 }

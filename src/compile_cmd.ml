@@ -52,14 +52,15 @@ let main args =
              if name == "*macros*" then
                CompileOk (name, String.concat "\n" Macros.macros)
              else
-               CompileError (name, Srcloc.start, "include unimplemented for name " ^ name)
+               CompileError
+                 (Srcloc.start infile, "include unimplemented for name " ^ name)
          }
        in
        let result = Compiler.compile_file opts input in
        match result with
        | CompileOk output ->
          Node.Fs.writeFileSync infile output `utf8
-       | CompileError (infile, srcloc, err) ->
+       | CompileError (srcloc, err) ->
          Printf.printf "%s(%s): %s\n" infile (Srcloc.toString srcloc) err
     )
     (List.rev ap.inputFiles)

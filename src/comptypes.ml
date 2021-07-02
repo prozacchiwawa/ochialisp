@@ -5,15 +5,15 @@ module StringMap = Map.Make(String)
 
 type 'a compileResult =
   | CompileOk of 'a
-  | CompileError of string * Srcloc.t * string
+  | CompileError of Srcloc.t * string
 
 let compMap (f : 'a -> 'b) : 'a compileResult -> 'b compileResult = function
   | CompileOk a -> CompileOk (f a)
-  | CompileError (f,l,e) -> CompileError (f,l,e)
+  | CompileError (l,e) -> CompileError (l,e)
 
 let compBind (f : 'a -> 'b compileResult) : 'a compileResult -> 'b compileResult = function
   | CompileOk a -> f a
-  | CompileError (f,l,e) -> CompileError (f,l,e)
+  | CompileError (l,e) -> CompileError (l,e)
 
 let identity a = a
 
@@ -41,12 +41,12 @@ type compilerOpts =
   ; assemble : bool
   }
 
-let rec list_to_cons_ loc_of accum = function
-  | [] -> accum (Nil Srcloc.start)
-  | hd :: tl -> list_to_cons_ loc_of (fun t -> accum (Cons (loc_of hd, hd, t))) tl
+let rec list_to_cons_ l loc_of accum = function
+  | [] -> accum (Nil l)
+  | hd :: tl -> list_to_cons_ l loc_of (fun t -> accum (Cons (loc_of hd, hd, t))) tl
 
 (* Turn an ocaml list into an sexp list *)
-let list_to_cons loc_of = list_to_cons_ loc_of identity
+let list_to_cons l loc_of = list_to_cons_ l loc_of identity
 
 (* A binding for a let *)
 type 'body binding = Binding of (Srcloc.t * string * 'body bodyForm)
@@ -72,12 +72,12 @@ type ('arg, 'body) modAccumulator
     (Srcloc.t * (('arg, 'body) helperForm list -> ('arg, 'body) helperForm list))
   | ModFinal of (('arg, 'body) compileForm)
 
-let rec binding_to_sexp (body_to_sexp : 'body -> Srcloc.t sexp) = function
+let rec binding_to_sexp l (body_to_sexp : 'body -> Srcloc.t sexp) = function
   | Binding (loc,name,body) ->
     Cons
       ( loc
       , Atom (loc,name)
-      , Cons (loc,bodyform_to_sexp body_to_sexp body, Nil loc)
+      , Cons (loc,bodyform_to_sexp l body_to_sexp body, Nil loc)
       )
 
 and loc_of_bodyform = function
@@ -87,19 +87,19 @@ and loc_of_bodyform = function
 and loc_of_binding = function
   | Binding (loc, _, _) -> loc
 
-and bodyform_to_sexp (body_to_sexp : 'body -> Srcloc.t sexp) :
+and bodyform_to_sexp l (body_to_sexp : 'body -> Srcloc.t sexp) :
   'body bodyForm -> Srcloc.t sexp = function
   | Let (loc, bindings, body) ->
     let binding_translator : 'body binding -> Srcloc.t sexp =
-      binding_to_sexp body_to_sexp
+      binding_to_sexp l body_to_sexp
     in
     let translated_bindings =
       List.map binding_translator bindings
     in
     let bindings_cons : Srcloc.t sexp =
-      list_to_cons location_of translated_bindings
+      list_to_cons l location_of translated_bindings
     in
-    let translated_body = bodyform_to_sexp body_to_sexp body in
+    let translated_body = bodyform_to_sexp l body_to_sexp body in
     Cons
       ( loc
       , Atom (loc,"let")
@@ -130,7 +130,7 @@ let rec helperform_to_sexp arg_to_sexp body_to_sexp = function
           , Atom (l, n)
           , Cons
               ( l
-              , bodyform_to_sexp body_to_sexp b
+              , bodyform_to_sexp l body_to_sexp b
               , Nil l
               )
           )
@@ -165,7 +165,7 @@ let rec helperform_to_sexp arg_to_sexp body_to_sexp = function
               , arg_to_sexp a
               , Cons
                   ( l
-                  , bodyform_to_sexp body_to_sexp b
+                  , bodyform_to_sexp l body_to_sexp b
                   , Nil l
                   )
               )
@@ -175,14 +175,14 @@ let rec helperform_to_sexp arg_to_sexp body_to_sexp = function
 and compileform_to_sexp arg_to_sexp body_to_sexp = function
   | Mod (l, args, helpers, exp) ->
     let fcvt = helperform_to_sexp arg_to_sexp body_to_sexp in
-    let bcvt = bodyform_to_sexp body_to_sexp exp in
+    let bcvt = bodyform_to_sexp l body_to_sexp exp in
     Cons
       ( l
       , Atom (l, "mod")
       , Cons
           ( l
           , arg_to_sexp args
-          , list_to_cons location_of @@
+          , list_to_cons l location_of @@
             ( List.concat
                 [ List.map fcvt helpers ; [ bcvt ] ]
             )
