@@ -1,4 +1,6 @@
 open Comptypes
+open Frontend
+open Codegen
 
 type arg_process =
   { includeDirs : string list
@@ -48,12 +50,20 @@ let main args =
          { includeDirs = ap.includeDirs
          ; filename = infile
          ; assemble = not ap.noAssemble
-         ; readNewFile = fun _ _ name ->
-             if name == "*macros*" then
-               CompileOk (name, String.concat "\n" Macros.macros)
-             else
-               CompileError
-                 (Srcloc.start infile, "include unimplemented for name " ^ name)
+         ; readNewFile =
+             (fun _ _ name ->
+                if name == "*macros*" then
+                  CompileOk (name, String.concat "\n" Macros.macros)
+                else
+                  CompileError
+                    (Srcloc.start infile, "include unimplemented for name " ^ name)
+             )
+
+         ; compileProgram =
+             (fun opts program ->
+                frontend opts [program]
+                |> compBind (fun m -> codegen opts m)
+             )
          }
        in
        let result = Compiler.compile_file opts input in

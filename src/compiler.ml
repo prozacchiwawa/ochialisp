@@ -23,8 +23,7 @@ let compile_file opts content : string compileResult =
          codegen opts fe
       )
     |> compMap
-      (function
-        | Code (_,result) ->
+      (fun result ->
         if opts.assemble then
           Sexp.encode result
         else

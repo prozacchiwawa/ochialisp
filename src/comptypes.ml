@@ -38,6 +38,7 @@ type compilerOpts =
   { includeDirs : string list
   ; filename : string
   ; readNewFile : compilerOpts -> string -> string -> (string * string) compileResult
+  ; compileProgram : compilerOpts -> Srcloc.t sexp -> Srcloc.t sexp compileResult
   ; assemble : bool
   }
 
@@ -200,5 +201,5 @@ type ('arg,'body) primaryCodegen =
   ; finished_replacements : Srcloc.t sexp StringMap.t
   ; to_process : ('arg,'body) helperForm list
   ; final_expr : 'body bodyForm
-  ; environment_shape : Srcloc.t sexp
+  ; final_code : compiledCode option
   }

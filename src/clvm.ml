@@ -1,10 +1,7 @@
 open Sexp
 open Binascii
-
-type 'a runResult
-  = RunError of (Srcloc.t * string)
-  | RunExn of (Srcloc.t * Srcloc.t sexp)
-  | RunOk of 'a
+open Arith
+open Runtypes
 
 let rec path_to_expression l p context =
   if p == 1 then
@@ -37,28 +34,6 @@ let cvt_to_int l = function
   | Atom (_,v) -> RunOk (intval @@ "0x" ^ encode_string_to_bigint v)
   | QuotedString (_,_,v) -> RunOk (intval @@ "0x" ^ encode_string_to_bigint v)
   | any -> RunError (l, "bad argument for int conversion " ^ to_string any)
-
-let do_arith l _op _a _b = RunError (l, "not implemented")
-
-let do_greater a b =
-  if BigInteger.greater a b then
-    BigInteger.bigInt (`Int 1)
-  else
-    BigInteger.bigInt (`Int 0)
-
-let do_divmod l _a _b = RunError (l, "not implemented")
-
-let shl n v =
-  BigInteger.shiftLeft n v
-
-let shr n v =
-  BigInteger.shiftRight n v
-
-let logand _a _b = raise Not_found
-
-let logior _a _b = raise Not_found
-
-let logxor _a _b = raise Not_found
 
 let rec run sexp context =
   let _ = Js.log @@ to_string sexp ^ " <- " ^ to_string context in
@@ -255,7 +230,7 @@ let rec run sexp context =
               , Nil _
               )
           )
-      ) -> do_arith l BigInteger.add a b
+      ) -> do_arith l add a b
 
     | ( Integer (_,"17")
       , Cons
@@ -267,7 +242,7 @@ let rec run sexp context =
               , Nil _
               )
           )
-      ) -> do_arith l BigInteger.subtract a b
+      ) -> do_arith l subtract a b
 
     | ( Integer (_,"18")
       , Cons
@@ -279,7 +254,7 @@ let rec run sexp context =
               , Nil _
               )
           )
-      ) -> do_arith l BigInteger.multiply a b
+      ) -> do_arith l multiply a b
 
     | ( Integer (_,"19")
       , Cons
@@ -291,7 +266,7 @@ let rec run sexp context =
               , Nil _
               )
           )
-      ) -> do_arith l BigInteger.divide a b
+      ) -> do_arith l divide a b
 
     | ( Integer (_,"20")
       , Cons

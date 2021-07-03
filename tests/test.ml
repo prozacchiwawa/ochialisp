@@ -1,6 +1,9 @@
 open Comptypes
 open Clvm
 open Compiler
+open Frontend
+open Codegen
+open Runtypes
 
 type test_spec =
   { expected : string compileResult
@@ -18,23 +21,27 @@ let emptyOpts =
   { includeDirs = []
   ; filename = "test.clvm"
   ; assemble = true
-  ; readNewFile = fun _ _ name ->
-      if name == "*macros*" then
-        CompileOk (name, String.concat "\n" Macros.macros)
-      else
-        CompileError (Srcloc.start name, "include unimplemented for name " ^ name)
+  ; readNewFile =
+      (fun _ _ name ->
+         if name == "*macros*" then
+          CompileOk (name, String.concat "\n" Macros.macros)
+         else
+           CompileError (Srcloc.start name, "include unimplemented for name " ^ name)
+      )
+
+  ; compileProgram =
+      (fun opts program ->
+         frontend opts [program]
+         |> compBind (fun m -> codegen opts m)
+      )
   }
 
 let emptyCompile = { emptyOpts with assemble = true }
 
 let tests =
-  [ { expected = CompileOk "80"
-    ; opts = emptyOpts
-    ; input = "(mod (a) (defun f () (+ (f) a)) ())"
-    }
-  ; { expected = CompileOk "(c (q . \"hi\") (c (q . 10) ()))"
+  [ { expected = CompileOk "(+ 1 3)"
     ; opts = { emptyOpts with assemble = false }
-    ; input = "(mod () (defmacro testmacro (A) (qq (q \"hi\" (unquote (+ 1 A))))) (testmacro 9))"
+    ; input = "(mod () (defmacro testmacro (A) (qq (+ 1 (unquote A)))) (testmacro 3))"
     }
   ]
 

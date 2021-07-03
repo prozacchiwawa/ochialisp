@@ -36,3 +36,12 @@ let prims : (string * Srcloc.t sexp) list =
   ; ("all", Integer (primloc, "34"))
   ; ("softfork", Integer (primloc, "36"))
   ]
+
+let primquote l a = Cons (l, Integer (l,"1"), a)
+
+let primcons l a b = Cons (l, Integer (l,"4"), Cons (l, a, Cons (l, b, Nil l)))
+
+let primapply l a b = Cons (l, Integer (l,"2"), Cons (l, a, Cons (l, b, Nil l)))
+
+let primop l op args = Cons (l, op, args)
+

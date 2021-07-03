@@ -1,288 +1,7 @@
-open Gensym
 open Sexp
 open Comptypes
 open Preprocessor
-
-(* Given a cons cell, rename occurrences of oldname to newname *)
-let rec rename_in_cons namemap = function
-  | Atom (l,name) ->
-    begin
-      try
-        Atom (l,StringMap.find name namemap)
-      with _ ->
-        Atom (l,name)
-    end
-  | Cons (l,Atom (la,"q"),any) -> Cons (l,Atom (la,"q"),any)
-  | Cons (l,Atom (la,"quote"),Cons (_,v,Nil _)) ->
-    Cons (l,Atom (la,"q"),v)
-  | Cons (l,head,tail) ->
-    Cons (l,rename_in_cons namemap head,rename_in_cons namemap tail)
-  | any -> any
-
-(* Returns a list of pairs containing the old and new atom names *)
-let rec invent_new_names_sexp = function
-  | Atom (_,name) -> [(name, gensym name)]
-  | Cons (_,head,tail) ->
-    List.concat [invent_new_names_sexp head; invent_new_names_sexp tail]
-  | _ -> []
-
-let make_binding_unique = function
-  | Binding (l,name,body) -> (name, Binding (l, gensym name, body))
-
-let rec rename_in_bodyform namemap = function
-  | Let (l,bindings,body) ->
-    let renames = List.map make_binding_unique bindings in
-    let new_renamed_bindings = List.map snd renames in
-    let local_namemap =
-      renames
-      |> List.map
-        (function
-          | (oldname, Binding (_, newname, _)) -> (oldname, newname)
-        )
-      |> StringMapBuilder.go
-    in
-    let locally_renamed_body = rename_in_bodyform local_namemap body in
-    let new_bindings =
-      List.map
-        (function
-          | Binding (l,name,body) ->
-            Binding (l,name,rename_in_bodyform namemap body)
-        )
-        new_renamed_bindings
-    in
-    Let (l, new_bindings, rename_in_bodyform namemap locally_renamed_body)
-
-  | Expr (l, e) ->
-    Expr (l, rename_in_cons namemap e)
-
-and rename_in_helperform namemap = function
-  | Defconstant (l,n,body) ->
-    Defconstant
-      ( l
-      , n
-      , rename_in_bodyform namemap body
-      )
-  | Defmacro (l,n,arg,body) ->
-    let new_names = invent_new_names_sexp arg in
-    let local_namemap = new_names |> StringMapBuilder.go in
-    let local_renamed_arg = rename_in_cons local_namemap arg in
-    let local_renamed_body = rename_in_compileform local_namemap body in
-    Defmacro
-      ( l
-      , n
-      , local_renamed_arg
-      , rename_in_compileform namemap local_renamed_body
-      )
-  | Defun (l,n,inline,arg,body) ->
-    let new_names = invent_new_names_sexp arg in
-    let local_namemap = new_names |> StringMapBuilder.go in
-    let local_renamed_arg = rename_in_cons local_namemap arg in
-    let local_renamed_body = rename_in_bodyform local_namemap body in
-    Defun
-      ( l
-      , n
-      , inline
-      , local_renamed_arg
-      , rename_in_bodyform namemap local_renamed_body
-      )
-
-and rename_in_compileform namemap = function
-  | Mod (l,arg,helpers,body) ->
-    let new_names = invent_new_names_sexp arg in
-    let local_namemap = new_names |> StringMapBuilder.go in
-    let local_renamed_arg = rename_in_cons local_namemap arg in
-    let local_renamed_helpers =
-      List.map (rename_in_helperform local_namemap) helpers
-    in
-    let local_renamed_body = rename_in_bodyform local_namemap body in
-    Mod
-      ( l
-      , local_renamed_arg
-      , List.map (rename_in_helperform namemap) local_renamed_helpers
-      , rename_in_bodyform namemap local_renamed_body
-      )
-
-let rec compile_bodyform = function
-  | Cons
-      ( l
-      , Atom ( _, "let" )
-      , Cons
-          ( _
-          , _bindings
-          , Cons
-              ( _
-              , _body
-              , Nil _
-              )
-          )
-      ) ->
-    CompileError (l,"can't yet compile let")
-
-  | Cons
-      ( l
-      , Atom (_, "let" )
-      , _
-      ) ->
-    CompileError (l,"bad let form")
-
-  | any -> CompileOk (Expr (location_of any,any))
-
-and compile_defun l inline name args body =
-  compile_bodyform body
-  |> compMap (fun bf -> Defun (l, name, inline, args, bf))
-
-and compile_helperform = function
-  | Cons
-      ( l
-      , Atom (_, "defconstant")
-      , Cons
-          ( _
-          , Atom (_,_name)
-          , Cons
-              ( _
-              , _body
-              , Nil _
-              )
-          )
-      ) ->
-    CompileError (l, "can't yet compile defconstant")
-
-  | Cons
-      ( l
-      , Atom (_, "defmacro")
-      , Cons
-          ( _
-          , Atom (_,_name)
-          , Cons
-              ( _
-              , _args
-              , _body
-              )
-          )
-      ) ->
-    CompileError (l, "can't yet compile defmacro")
-
-  | Cons
-      ( l
-      , Atom (_, "defun")
-      , Cons
-          ( _
-          , Atom (_,name)
-          , Cons
-              ( _
-              , args
-              , Cons
-                  ( _
-                  , body
-                  , Nil _
-                  )
-              )
-          )
-      ) ->
-    compile_defun l false name args body
-    |> compMap (fun a -> Some a)
-
-  | Cons
-      ( l
-      , Atom (_, "defun-inline")
-      , Cons
-          ( _
-          , Atom (_,name)
-          , Cons
-              ( _
-              , args
-              , Cons
-                  ( _
-                  , body
-                  , Nil _
-                  )
-              )
-          )
-      ) ->
-    compile_defun l true name args body
-    |> compMap (fun a -> Some a)
-
-  | _ -> CompileOk None
-
-and compile_mod_ mc opts args = function
-  | Nil l -> CompileError (l, "no expression at end of mod")
-
-  | Cons (l,body,Nil _) ->
-    begin
-      match mc with
-      | ModAccum (l,helpers) ->
-        let _ = Js.log @@ "body " ^ to_string body in
-        compile_bodyform body
-        |> compMap (fun bf -> ModFinal (Mod (l,args,helpers [],bf)))
-
-      | ModFinal _ -> CompileError (l, "too many expressions")
-    end
-
-  | Cons (l,form,rest) ->
-    let _ = Js.log @@ "rest " ^ to_string rest in
-    compile_helperform form
-    |> compBind
-      (function
-        | None ->
-          CompileError (l, "only the last form can be an exprssion in mod")
-
-        | Some form ->
-          match mc with
-          | ModAccum (l,helpers) ->
-            CompileOk (ModAccum (l, fun r -> form :: (helpers r)))
-          | ModFinal _ ->
-            CompileError (l, "too many expressions")
-      )
-    |> compBind (fun ma -> compile_mod_ ma opts args rest)
-
-
-  | any ->
-    CompileError
-      ( location_of any
-      , Printf.sprintf "inappropriate sexp %s" (to_string any)
-      )
-
-let rec frontend_start opts pre_forms =
-  match pre_forms with
-  | [] ->
-    CompileError
-      (Srcloc.start opts.filename, "empty source file not allowed")
-
-  | [ ( Cons
-          ( l
-          , Atom (_,"mod")
-          , Cons
-              ( _
-              , args
-              , body
-              )
-          )
-      )
-    ] ->
-    let _ = Js.log @@ "mod " ^ to_string body in
-    preprocess opts body
-    |> compBind
-      (fun ls ->
-         compile_mod_ (ModAccum (l,identity)) opts args (list_to_cons l location_of ls)
-      )
-
-  | (Cons (l, Atom (_,"mod"), _)) :: _ ->
-    CompileError
-      (l, "one toplevel mod form allowed")
-
-  | hd :: _tl ->
-    let loc = location_of hd in
-    frontend_start opts
-      [ Cons
-          ( loc
-          , Atom (loc,"mod")
-          , Cons
-              ( loc
-              , Nil loc
-              , list_to_cons loc location_of pre_forms
-              )
-          )
-      ]
+open Rename
 
 let rec collect_used_names_sexp = function
   | Atom (_,name) -> [name]
@@ -352,7 +71,205 @@ let rec calculate_live_helpers opts last_names names helper_map =
     |> compBind
       (fun new_names -> calculate_live_helpers opts names new_names helper_map)
 
-let frontend opts pre_forms =
+let rec compile_bodyform = function
+  | Cons
+      ( l
+      , Atom ( _, "let" )
+      , Cons
+          ( _
+          , _bindings
+          , Cons
+              ( _
+              , _body
+              , Nil _
+              )
+          )
+      ) ->
+    CompileError (l,"can't yet compile let")
+
+  | Cons
+      ( l
+      , Atom (_, "let" )
+      , _
+      ) ->
+    CompileError (l,"bad let form")
+
+  | any -> CompileOk (Expr (location_of any,any))
+
+and compile_defun l inline name args body =
+  compile_bodyform body
+  |> compMap (fun bf -> Defun (l, name, inline, args, bf))
+
+and compile_defmacro opts l name args body =
+  let program =
+    Cons
+      ( l
+      , Atom (l, "mod")
+      , Cons
+          ( l
+          , args
+          , body
+          )
+      )
+  in
+  frontend opts [program]
+  |> compMap (fun p -> Defmacro (l, name, args, p))
+
+and compile_helperform opts = function
+  | Cons
+      ( l
+      , Atom (_, "defconstant")
+      , Cons
+          ( _
+          , Atom (_,_name)
+          , Cons
+              ( _
+              , _body
+              , Nil _
+              )
+          )
+      ) ->
+    CompileError (l, "can't yet compile defconstant")
+
+  | Cons
+      ( l
+      , Atom (_, "defmacro")
+      , Cons
+          ( _
+          , Atom (_,name)
+          , Cons
+              ( _
+              , args
+              , body
+              )
+          )
+      ) ->
+    compile_defmacro opts l name args body
+    |> compMap (fun a -> Some a)
+
+  | Cons
+      ( l
+      , Atom (_, "defun")
+      , Cons
+          ( _
+          , Atom (_,name)
+          , Cons
+              ( _
+              , args
+              , Cons
+                  ( _
+                  , body
+                  , Nil _
+                  )
+              )
+          )
+      ) ->
+    compile_defun l false name args body
+    |> compMap (fun a -> Some a)
+
+  | Cons
+      ( l
+      , Atom (_, "defun-inline")
+      , Cons
+          ( _
+          , Atom (_,name)
+          , Cons
+              ( _
+              , args
+              , Cons
+                  ( _
+                  , body
+                  , Nil _
+                  )
+              )
+          )
+      ) ->
+    compile_defun l true name args body
+    |> compMap (fun a -> Some a)
+
+  | _ -> CompileOk None
+
+and compile_mod_ mc opts args = function
+  | Nil l -> CompileError (l, "no expression at end of mod")
+
+  | Cons (l,body,Nil _) ->
+    begin
+      match mc with
+      | ModAccum (l,helpers) ->
+        let _ = Js.log @@ "body " ^ to_string body in
+        compile_bodyform body
+        |> compMap (fun bf -> ModFinal (Mod (l,args,helpers [],bf)))
+
+      | ModFinal _ -> CompileError (l, "too many expressions")
+    end
+
+  | Cons (l,form,rest) ->
+    let _ = Js.log @@ "rest " ^ to_string rest in
+    compile_helperform opts form
+    |> compBind
+      (function
+        | None ->
+          CompileError (l, "only the last form can be an exprssion in mod")
+
+        | Some form ->
+          match mc with
+          | ModAccum (l,helpers) ->
+            CompileOk (ModAccum (l, fun r -> form :: (helpers r)))
+          | ModFinal _ ->
+            CompileError (l, "too many expressions")
+      )
+    |> compBind (fun ma -> compile_mod_ ma opts args rest)
+
+
+  | any ->
+    CompileError
+      ( location_of any
+      , Printf.sprintf "inappropriate sexp %s" (to_string any)
+      )
+
+and frontend_start opts pre_forms =
+  match pre_forms with
+  | [] ->
+    CompileError
+      (Srcloc.start opts.filename, "empty source file not allowed")
+
+  | [ ( Cons
+          ( l
+          , Atom (_,"mod")
+          , Cons
+              ( _
+              , args
+              , body
+              )
+          )
+      )
+    ] ->
+    let _ = Js.log @@ "mod " ^ to_string body in
+    preprocess opts body
+    |> compBind
+      (fun ls ->
+         compile_mod_ (ModAccum (l,identity)) opts args (list_to_cons l location_of ls)
+      )
+
+  | (Cons (l, Atom (_,"mod"), _)) :: _ ->
+    CompileError
+      (l, "one toplevel mod form allowed")
+
+  | hd :: _tl ->
+    let loc = location_of hd in
+    frontend_start opts
+      [ Cons
+          ( loc
+          , Atom (loc,"mod")
+          , Cons
+              ( loc
+              , Nil loc
+              , list_to_cons loc location_of pre_forms
+              )
+          )
+      ]
+
+and frontend opts pre_forms =
   let _ = Js.log @@ String.concat ";" @@ List.map to_string pre_forms in
   frontend_start opts pre_forms
   |> compBind

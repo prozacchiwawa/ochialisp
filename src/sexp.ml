@@ -359,6 +359,17 @@ let rec encode : 'a sexp -> string = function
 let intval v =
   BigInteger.toJSNumber (BigInteger.bigInt (`String v))
 
+let sexp_to_bigint = function
+  | Nil _ ->
+    Some (BigInteger.bigInt (`Int 0))
+  | Integer (_,v) ->
+    Some (BigInteger.bigInt (`String v))
+  | Atom (_,v) ->
+    Some (BigInteger.bigInt (`String ("0x" ^ encode_string_to_bigint v)))
+  | QuotedString (_,_,v) ->
+    Some (BigInteger.bigInt (`String ("0x" ^ encode_string_to_bigint v)))
+  | _ -> None
+
 let rec equal a b =
   if nilp a && nilp b then
     true
