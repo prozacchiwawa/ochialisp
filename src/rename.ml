@@ -4,7 +4,6 @@ open Comptypes
 
 let rec rename_in_qq namemap = function
   | Cons (_l,Atom (_,"unquote"),Cons (_,body,Nil _)) ->
-    let _ = Js.log @@ "resume renaming " ^ to_string body in
     rename_in_cons namemap body
   | Cons (l,x,y) -> Cons (l,rename_in_qq namemap x,rename_in_qq namemap y)
   | any -> any
@@ -21,9 +20,7 @@ and rename_in_cons namemap = function
   | Cons (l,Atom (la,"q"),any) -> Cons (l,Atom (la,"q"),any)
   | Cons (l,Atom (la,"quote"),Cons (_,v,Nil _)) ->
     Cons (l,Atom (la,"q"),v)
-  | Cons (_l,Atom (_la,"qq"),Cons (_,qqexpr,_)) ->
-    let _ = Js.log @@ "qq " ^ to_string qqexpr in
-    rename_in_qq namemap qqexpr
+  | Cons (_l,Atom (_la,"qq"),Cons (_,qqexpr,_)) -> rename_in_qq namemap qqexpr
   | Cons (l,head,tail) ->
     Cons (l,rename_in_cons namemap head,rename_in_cons namemap tail)
   | any -> any

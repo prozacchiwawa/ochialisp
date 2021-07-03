@@ -91,7 +91,6 @@ let rec process_macro_args opts compiler = function
     |> compBind
       (function
         | Code (_,r) ->
-          let _ = Js.log @@ "arg tail is " ^ to_string r in
           generate_bodyform_code opts compiler f
           |> compMap
             (function
@@ -123,7 +122,6 @@ and process_macro_call opts compiler l name args =
        let run_outcome = run code (Cons (l,compiler.env,args)) in
        match run_outcome with
        | RunExn (ml,x) ->
-         let _ = Js.log @@ "runexn " ^ to_string x in
          CompileError
            ( l
            , Printf.sprintf
@@ -134,7 +132,6 @@ and process_macro_call opts compiler l name args =
            )
 
        | RunError (rl,e) ->
-         let _ = Js.log @@ "runerror " ^ e in
          CompileError
            ( l
            , Printf.sprintf
@@ -145,7 +142,6 @@ and process_macro_call opts compiler l name args =
            )
 
        | RunOk v ->
-         let _ = Js.log @@ "runok " ^ to_string v in
          generate_bodyform_code opts compiler v
     )
 
@@ -232,9 +228,7 @@ let codegen_ opts compiler = function
     opts.compileProgram opts macroProgram
     |> compMap
       (fun code ->
-         let _ = Js.log @@ "have code for macro " ^ name ^ " -> " ^ to_string code in
          let exploded = macro_explode code in
-         let _ = Js.log @@ "exploded " ^ to_string exploded in
          { compiler with
            macros = StringMap.add name exploded compiler.macros
          }
@@ -267,27 +261,20 @@ let start_codegen _opts = function
     ; final_code = None
     }
 
-let show_macros compiler =
-  Js.log @@ "macros " ^ String.concat ";" (List.map fst (StringMap.bindings compiler.macros))
-
 let final_codegen opts compiler =
-  let _ = Js.log @@ "generate final code for " ^ to_string (bodyform_to_sexp (loc_of_bodyform compiler.final_expr) identity compiler.final_expr) in
   generate_expr_code opts compiler compiler.final_expr
   |> compMap
     (function
       | Code (l,code) ->
-        let _ = Js.log @@ "code was " ^ to_string code in
        { compiler with final_code = Some (Code (l,code)) }
     )
 
 let codegen opts cmod =
   let compiler = start_codegen opts cmod in
-  let _ = Js.log @@ to_string @@ codegen_to_sexp compiler in
   List.fold_left
     (fun c f -> compBind (fun comp -> codegen_ opts comp f) c)
     (CompileOk compiler)
     compiler.to_process
-  |> compMap (fun c -> show_macros c ; c)
   |> compBind (final_codegen opts)
   |> compBind
     (fun c ->

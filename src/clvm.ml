@@ -36,7 +36,6 @@ let cvt_to_int l = function
   | any -> RunError (l, "bad argument for int conversion " ^ to_string any)
 
 let rec run sexp context =
-  let _ = Js.log @@ to_string sexp ^ " <- " ^ to_string context in
   let translate_head sexp =
     match sexp with
     | Nil l -> RunError (l, "cannot apply nil")

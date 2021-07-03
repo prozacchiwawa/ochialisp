@@ -16,12 +16,7 @@ let compile_file opts content : string compileResult =
   | Sexp.Success pre_forms ->
     frontend opts pre_forms
     |> compBind
-      (fun fe ->
-         let _ =
-           Js.log @@ to_string @@ compileform_to_sexp identity identity fe
-         in
-         codegen opts fe
-      )
+      (fun fe -> codegen opts fe)
     |> compMap
       (fun result ->
         if opts.assemble then

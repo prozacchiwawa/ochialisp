@@ -196,7 +196,6 @@ and compile_mod_ mc opts args = function
     begin
       match mc with
       | ModAccum (l,helpers) ->
-        let _ = Js.log @@ "body " ^ to_string body in
         compile_bodyform body
         |> compMap (fun bf -> ModFinal (Mod (l,args,helpers [],bf)))
 
@@ -204,7 +203,6 @@ and compile_mod_ mc opts args = function
     end
 
   | Cons (l,form,rest) ->
-    let _ = Js.log @@ "rest " ^ to_string rest in
     compile_helperform opts form
     |> compBind
       (function
@@ -244,7 +242,6 @@ and frontend_start opts pre_forms =
           )
       )
     ] ->
-    let _ = Js.log @@ "mod " ^ to_string body in
     preprocess opts body
     |> compBind
       (fun ls ->
@@ -270,7 +267,6 @@ and frontend_start opts pre_forms =
       ]
 
 and frontend opts pre_forms =
-  let _ = Js.log @@ String.concat ";" @@ List.map to_string pre_forms in
   frontend_start opts pre_forms
   |> compBind
     (function
@@ -281,7 +277,6 @@ and frontend opts pre_forms =
   |> compBind
     (function
       | Mod (l,args,helpers,expr) ->
-        let _ = Js.log @@ to_string @@ bodyform_to_sexp l identity expr in
         let expr_names =
           StringSet.of_list @@ collect_used_names_bodyForm expr
         in
@@ -297,12 +292,6 @@ and frontend opts pre_forms =
                List.filter
                  (fun h -> StringSet.mem (name_of_helper h) helper_names)
                  helpers
-             in
-             let _ =
-               Js.log @@ String.concat ";" @@ StringSet.elements helper_names
-             in
-             let _ =
-               Js.log @@ to_string @@ bodyform_to_sexp l identity expr
              in
              Mod (l,args,live_helpers,expr)
           )
