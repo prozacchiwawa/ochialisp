@@ -83,7 +83,7 @@ let rec process_macro_args opts compiler = function
     generate_bodyform_code opts compiler f
     |> compMap
       (function
-        | Code (l,f) -> Code (l,primcons l f (Nil l))
+        | Code (l,f) -> Code (l,Cons (l, f, (Nil l)))
       )
 
   | Cons (l,f,r) ->
@@ -96,9 +96,7 @@ let rec process_macro_args opts compiler = function
           |> compMap
             (function
               | Code (l,f) ->
-                let acode = primcons l f r in
-                let _ = Js.log @@ "acode " ^ to_string acode in
-                Code (l, acode)
+                Code (l, Cons (l, f, r))
             )
       )
 
@@ -122,16 +120,7 @@ and process_macro_call opts compiler l name args =
     )
   |> compBind
     (fun (code,args) ->
-       let run_outcome =
-         run args compiler.env
-         |> runBind
-           (fun a ->
-              let _ =
-                Js.log @@ "doing run with " ^ to_string code ^ " args " ^ to_string a
-              in
-              run code (Cons (l,compiler.env,a))
-           )
-       in
+       let run_outcome = run code (Cons (l,compiler.env,args)) in
        match run_outcome with
        | RunExn (ml,x) ->
          let _ = Js.log @@ "runexn " ^ to_string x in
@@ -209,6 +198,8 @@ and generate_bodyform_code opts compiler = function
         | CompileOk code -> CompileOk code
         | _ -> process_prim_call opts compiler l name rest
     end
+  | Cons (l,Integer (li,v),rest) ->
+    CompileOk (Code (l, Cons (l, Integer (li,v), rest)))
   | any ->
     let l = location_of any in
     CompileOk (Code (l, primquote l any))
@@ -216,6 +207,19 @@ and generate_bodyform_code opts compiler = function
 and generate_expr_code opts compiler = function
   | Let (l,_bindings,_expr) -> CompileError (l, "can't yet do let")
   | Expr (_,e) -> generate_bodyform_code opts compiler e
+
+let rec macro_explode_alist = function
+  | Cons (l,Integer (_,v),rest) ->
+    primcons l (Integer (l,v)) (macro_explode_alist rest)
+  | Cons (l,first,rest) ->
+    primcons l (macro_explode first) (macro_explode_alist rest)
+  | any -> primquote (location_of any) any
+
+and macro_explode = function
+  | Cons (l,Integer (_,"1"),r) -> primquote l (primquote l r)
+  | Cons (l,Integer (_,v),r) ->
+    primcons l (primquote l (Integer (l,v))) (macro_explode_alist r)
+  | any -> primquote (location_of any) any
 
 let codegen_ opts compiler = function
   | Defconstant (loc, name, body) ->
@@ -228,9 +232,11 @@ let codegen_ opts compiler = function
     opts.compileProgram opts macroProgram
     |> compMap
       (fun code ->
-         let _ = Js.log @@ "have code for macro " ^ name in
+         let _ = Js.log @@ "have code for macro " ^ name ^ " -> " ^ to_string code in
+         let exploded = macro_explode code in
+         let _ = Js.log @@ "exploded " ^ to_string exploded in
          { compiler with
-           macros = StringMap.add name code compiler.macros
+           macros = StringMap.add name exploded compiler.macros
          }
       )
 
@@ -268,10 +274,10 @@ let final_codegen opts compiler =
   let _ = Js.log @@ "generate final code for " ^ to_string (bodyform_to_sexp (loc_of_bodyform compiler.final_expr) identity compiler.final_expr) in
   generate_expr_code opts compiler compiler.final_expr
   |> compMap
-    (fun code ->
-       let _ = Js.log "code was" in
-       let _ = Js.log code in
-       { compiler with final_code = Some code }
+    (function
+      | Code (l,code) ->
+        let _ = Js.log @@ "code was " ^ to_string code in
+       { compiler with final_code = Some (Code (l,code)) }
     )
 
 let codegen opts cmod =

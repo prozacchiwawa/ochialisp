@@ -39,7 +39,7 @@ let emptyOpts =
 let emptyCompile = { emptyOpts with assemble = true }
 
 let tests =
-  [ { expected = CompileOk "(+ 1 3)"
+  [ { expected = CompileOk "(+ (1 . 1) 3)"
     ; opts = { emptyOpts with assemble = false }
     ; input = "(mod () (defmacro testmacro (A) (qq (+ 1 (unquote A)))) (testmacro 3))"
     }
