@@ -60,164 +60,143 @@ let create_name_lookup compiler l name =
   create_name_lookup_ l name compiler.env compiler.env
   |> compMap (fun i -> Integer (l,string_of_int i))
 
-let lookup_callable compiler l name =
-  create_name_lookup compiler l name
-
 let lookup_prim compiler l name =
   try
     CompileOk (StringMap.find name compiler.prims)
   with _ ->
     CompileError (l, "no such prim " ^ name)
 
-let codegen_to_sexp _compiler =
-  Cons (Srcloc.start, Atom (Srcloc.start, "codegen"), Nil Srcloc.start)
+let codegen_to_sexp opts compiler =
+  let l = Srcloc.start opts.filename in
+  with_heading l "codegen" @@
+  list_to_cons
+    l
+    location_of
+    [ with_heading l "prims" @@
+      cons_of_string_map l identity compiler.prims
+    ; with_heading l "macros" @@
+      cons_of_string_map l identity compiler.macros
+    ; with_heading l "defuns" @@
+      cons_of_string_map l identity compiler.defuns
+    ; with_heading l "env" (Cons (l,compiler.env,Nil l))
+    ; with_heading l "final_expr" @@
+      Cons (l,bodyform_to_sexp l identity compiler.final_expr,Nil l)
+    ]
 
-let rec process_macro_args opts compiler = function
-  | Atom (l,n) ->
-    create_name_lookup compiler l n
-    |> compMap (fun f -> Code (l,Cons (l,f,Nil l)))
-
-  | Nil l -> CompileOk (Code (l,Nil l))
-
-  | Cons (l,f,Nil _) ->
-    generate_bodyform_code opts compiler f
-    |> compMap
-      (function
-        | Code (l,f) -> Code (l,Cons (l, f, (Nil l)))
-      )
-
-  | Cons (l,f,r) ->
-    process_macro_args opts compiler r
-    |> compBind
-      (function
-        | Code (_,r) ->
-          generate_bodyform_code opts compiler f
-          |> compMap
-            (function
-              | Code (l,f) ->
-                Code (l, Cons (l, f, r))
-            )
-      )
-
-  | any ->
-    let l = location_of any in
-    CompileOk (Code (l, primquote l any))
-
-and lookup_macro compiler l name =
-  try
-    CompileOk (StringMap.find name compiler.macros)
-  with _ ->
-    CompileError (l, "could not find macro " ^ name)
-
-and process_macro_call opts compiler l name args =
-  process_macro_args opts compiler args
-  |> compBind
-    (function
-      | Code (l,args) ->
-        lookup_macro compiler l name
-        |> compMap (fun code -> (code,args))
-    )
-  |> compBind
-    (fun (code,args) ->
-       let run_outcome = run code (Cons (l,compiler.env,args)) in
-       match run_outcome with
-       | RunExn (ml,x) ->
-         CompileError
-           ( l
-           , Printf.sprintf
-               "macro %s aborted at %s with %s"
-               name
-               (Srcloc.toString ml)
-               (to_string x)
-           )
-
-       | RunError (rl,e) ->
-         CompileError
-           ( l
-           , Printf.sprintf
-               "error executing macro %s: %s %s"
-               name
-               (Srcloc.toString rl)
-               e
-           )
-
-       | RunOk v ->
-         generate_bodyform_code opts compiler v
-    )
-
-and process_code_call compiler l name args =
-  lookup_callable compiler l name
-  |> compMap (fun flookup -> Code (l, primapply l flookup args))
-
-and eval_prim_arg opts compiler = function
+let rec get_callable opts compiler l atom =
+  match atom with
   | Atom (l,name) ->
-    create_name_lookup compiler l name
-    |> compMap (fun c -> Code (l,c))
-  | Cons (l,f,r) -> generate_bodyform_code opts compiler (Cons (l,f,r))
-  | any ->
-    let l = location_of any in
-    CompileOk (Code (l, primquote l any))
-
-and eval_prim_args opts compiler = function
-  | Cons (l,f,r) ->
-    eval_prim_arg opts compiler f
-    |> compBind
-      (fun f ->
-         eval_prim_args opts compiler r
-         |> compMap (fun r -> (f,r))
-      )
-    |> compMap
-      (fun (Code (_,f),Code (_,r)) -> Code (l,Cons (l,f,r)))
-
-  | Nil l -> CompileOk (Code (l, Nil l))
-
-  | any -> CompileError (location_of any, "bad tail for calling prim")
-
-and process_prim_call opts compiler l name args =
-  eval_prim_args opts compiler args
-  |> compBind
-    (function
-      | Code (l,args) ->
-       lookup_prim compiler l name
-       |> compMap (fun f -> Code (l, primop l f args))
-    )
-
-and generate_bodyform_code opts compiler = function
-  | Atom (l,n) ->
-    create_name_lookup compiler l n |> compMap (fun i -> Code (l,i))
-  | Cons (l,Atom (_,name),rest) ->
+    let macro =
+      try
+        Some (StringMap.find name compiler.macros)
+      with _ ->
+        None
+    in
+    let defun =
+      try
+        Some (StringMap.find name compiler.defuns)
+      with _ ->
+        None
+    in
+    let prim =
+      try
+        Some (StringMap.find name compiler.prims)
+      with _ ->
+        None
+    in
     begin
-      match process_macro_call opts compiler l name rest with
-      | CompileOk code -> CompileOk code
-      | _ ->
-        match process_code_call compiler l name rest with
-        | CompileOk code -> CompileOk code
-        | _ -> process_prim_call opts compiler l name rest
+      match (macro, defun, prim) with
+      | (Some macro, _, _) -> CompileOk (CallMacro macro)
+      | (_, Some defun, _) -> CompileOk (CallDefun defun)
+      | (_, _, Some prim) -> CompileOk (CallPrim prim)
+      | _ -> CompileError (l, "no such callable " ^ name)
     end
-  | Cons (l,Integer (li,v),rest) ->
-    CompileOk (Code (l, Cons (l, Integer (li,v), rest)))
-  | any ->
-    let l = location_of any in
-    CompileOk (Code (l, primquote l any))
 
-and generate_expr_code opts compiler = function
+  | Integer (l,v) -> CompileOk (CallPrim (Integer (l,v)))
+
+  | any -> CompileError (location_of any, "can't call object " ^ to_string any)
+
+and process_macro_call opts compiler l args code =
+  let _ = Js.log @@ "run macro " ^ to_string code ^ " with " ^ to_string args in
+  let run_outcome = run code (Cons (l,compiler.env,args)) in
+  match run_outcome with
+  | RunExn (ml,x) ->
+    CompileError
+      ( l
+      , Printf.sprintf
+          "macro aborted at %s with %s"
+          (Srcloc.toString ml)
+          (to_string x)
+      )
+
+  | RunError (rl,e) ->
+    CompileError
+      ( l
+      , Printf.sprintf
+          "error executing macro: %s %s"
+          (Srcloc.toString rl)
+          e
+      )
+
+  | RunOk v ->
+    Frontend.compile_bodyform v
+    |> compBind (fun body -> generate_expr_code opts compiler body)
+
+and generate_args_code opts compiler l : Srcloc.t sexp bodyForm list -> Srcloc.t sexp compileResult = function
+  | [] -> CompileOk (Nil l)
+  | hd :: tl ->
+    generate_args_code opts compiler l tl
+    |> compBind
+      (fun t ->
+         generate_expr_code opts compiler hd
+         |> compMap
+           (function
+             | Code (_,h) -> Cons (l,h,t)
+           )
+      )
+
+and process_defun_call opts compiler l args lookup =
+  CompileError (l,"can't yet do defun call")
+
+and get_call_name l = function
+  | Value (Atom (l,name)) -> CompileOk (Atom (l,name))
+  | any -> CompileError (l, "not yet callable " ^ to_string (bodyform_to_sexp l identity any))
+
+and generate_expr_code (opts : compilerOpts) compiler expr : compiledCode compileResult =
+  let _ = Js.log @@ "generate_expr_code " ^ to_string (bodyform_to_sexp (loc_of_bodyform expr) identity expr) in
+  match expr with
   | Let (l,_bindings,_expr) -> CompileError (l, "can't yet do let")
-  | Expr (_,e) -> generate_bodyform_code opts compiler e
+  | Quoted q ->
+    let l = location_of q in
+    CompileOk (Code (l, primquote l q))
+  | Value (Atom (l,v)) ->
+    create_name_lookup compiler l v
+    |> compMap (fun f -> Code (l, f))
+  | Value (Integer (l,v)) -> CompileOk (Code (l, primquote l (Integer (l,v))))
+  | Call (l,[]) -> CompileError (l, "created a call with no forms")
+  | Call (l,hd :: tl) ->
+    let _ =
+      Js.log @@ "generating call " ^ to_string (bodyform_to_sexp l identity (Call (l,hd :: tl)))
+    in
+    let _ = Js.log @@ to_string @@ codegen_to_sexp opts compiler in
+    generate_args_code opts compiler l tl
+    |> compBind (fun args -> get_call_name l hd |> compMap (fun h -> (h,args)))
+    |> compBind
+      (fun (hd,args) ->
+         get_callable opts compiler l hd
+         |> compBind
+           (function
+             | CallMacro code ->
+               process_macro_call opts compiler l args code
 
-let rec macro_explode_alist = function
-  | Cons (l,Integer (_,v),rest) ->
-    primcons l (Integer (l,v)) (macro_explode_alist rest)
-  | Cons (l,first,rest) ->
-    primcons l (macro_explode first) (macro_explode_alist rest)
-  | any -> primquote (location_of any) any
+             | CallDefun lookup ->
+               process_defun_call opts compiler l args lookup
 
-and macro_explode = function
-  | Cons (l,Integer (_,"1"),r) -> primquote l (primquote l r)
-  | Cons (l,Integer (_,v),r) ->
-    primcons l (primquote l (Integer (l,v))) (macro_explode_alist r)
-  | any -> primquote (location_of any) any
+             | CallPrim p -> CompileOk (Code (l, Cons (l,p,args)))
+           )
+      )
 
-let codegen_ opts compiler = function
+and codegen_ opts compiler = function
   | Defconstant (loc, name, body) ->
     CompileError (Srcloc.start opts.filename, "can't process defconstant forms yet")
 
@@ -225,34 +204,33 @@ let codegen_ opts compiler = function
     let macroProgram =
       compileform_to_sexp identity identity body
     in
+    let _ = Js.log @@ "macro named " ^ name ^ " program " ^ to_string macroProgram in
     opts.compileProgram opts macroProgram
     |> compMap
       (fun code ->
-         let exploded = macro_explode code in
+         let _ = Js.log @@ "compiled macro to " ^ to_string code in
          { compiler with
-           macros = StringMap.add name exploded compiler.macros
+           macros = StringMap.add name code compiler.macros
          }
       )
 
   | Defun (loc, name, inline, args, body) ->
     CompileError (Srcloc.start opts.filename, "can't process defun forms yet")
 
-let is_defun = function
+and is_defun = function
   | Defun _ -> true
   | _ -> false
 
-let start_codegen _opts = function
+and start_codegen _opts = function
   | Mod (l,args,helpers,expr) ->
     let live_helpers = List.filter is_defun helpers in
     { prims = Prims.prims |> StringMapBuilder.go
 
-    ; env = compute_env_shape l args live_helpers
-
     ; macros = StringMap.empty
 
-    ; finished_code = StringMap.empty
+    ; defuns = StringMap.empty
 
-    ; finished_replacements = StringMap.empty
+    ; env = compute_env_shape l args live_helpers
 
     ; to_process = helpers
 
@@ -261,15 +239,24 @@ let start_codegen _opts = function
     ; final_code = None
     }
 
-let final_codegen opts compiler =
+and final_codegen (opts : compilerOpts) (compiler : (Srcloc.t sexp, Srcloc.t sexp) primaryCodegen) =
+  let _ = Js.log @@ to_string (codegen_to_sexp opts compiler) in
+  let _ =
+    Js.log @@ "do_final_codegen " ^ to_string @@
+    bodyform_to_sexp
+      (loc_of_bodyform compiler.final_expr)
+      identity
+      compiler.final_expr
+  in
   generate_expr_code opts compiler compiler.final_expr
   |> compMap
     (function
       | Code (l,code) ->
+        let _ = Js.log @@ "final code " ^ to_string code in
        { compiler with final_code = Some (Code (l,code)) }
     )
 
-let codegen opts cmod =
+and codegen opts cmod =
   let compiler = start_codegen opts cmod in
   List.fold_left
     (fun c f -> compBind (fun comp -> codegen_ opts comp f) c)

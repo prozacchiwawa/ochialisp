@@ -43,6 +43,10 @@ let tests =
     ; opts = { emptyOpts with assemble = false }
     ; input = "(mod () (defmacro testmacro (A) (qq (+ 1 (unquote A)))) (testmacro 3))"
     }
+  ; { expected = CompileOk "(3 (1 . 1) 2 3)"
+    ; opts = { emptyOpts with assemble = false }
+    ; input = "(mod (a b) (defmacro function (BODY) (qq (opt (com (q . (unquote BODY)) (qq (unquote (macros))) (qq (unquote (symbols))))))) (defmacro if (A B C) (qq (a (i (unquote A) (function (unquote B)) (function (unquote C))) @))) (if 1 a b))"
+    }
   ]
 
 let clvm_tests =

@@ -1,4 +1,5 @@
 open Sexp
+open Prims
 
 module StringSet = Set.Make(String)
 module StringMap = Map.Make(String)
@@ -16,6 +17,8 @@ let compBind (f : 'a -> 'b compileResult) : 'a compileResult -> 'b compileResult
   | CompileError (l,e) -> CompileError (l,e)
 
 let identity a = a
+
+let const v _ = v
 
 module type MapLike = sig
   type key
@@ -55,7 +58,9 @@ type 'body binding = Binding of (Srcloc.t * string * 'body bodyForm)
 (* An expression body or a let form *)
 and 'body bodyForm
   = Let of (Srcloc.t * 'body binding list * 'body bodyForm)
-  | Expr of (Srcloc.t * 'body)
+  | Quoted of 'body
+  | Value of 'body
+  | Call of (Srcloc.t * 'body bodyForm list)
 
 (* Frontend mod forms (toplevel forms in tranditional lisp) *)
 and ('arg, 'body) helperForm
@@ -81,9 +86,11 @@ let rec binding_to_sexp l (body_to_sexp : 'body -> Srcloc.t sexp) = function
       , Cons (loc,bodyform_to_sexp l body_to_sexp body, Nil loc)
       )
 
-and loc_of_bodyform = function
+and loc_of_bodyform : Srcloc.t sexp bodyForm -> Srcloc.t = function
   | Let (loc, _, _) -> loc
-  | Expr (loc, _) -> loc
+  | Quoted a -> location_of a
+  | Call (loc, _) -> loc
+  | Value a -> location_of a
 
 and loc_of_binding = function
   | Binding (loc, _, _) -> loc
@@ -115,7 +122,12 @@ and bodyform_to_sexp l (body_to_sexp : 'body -> Srcloc.t sexp) :
           )
       )
 
-  | Expr (_,body) -> body_to_sexp body
+  | Quoted body -> primquote (location_of body) body
+
+  | Value body -> body
+
+  | Call (l,exprs) ->
+    list_to_cons l location_of @@ List.map (bodyform_to_sexp l identity) exprs
 
 let loc_of_compileform = function
   | Mod (l,_,_,_) -> l
@@ -192,14 +204,29 @@ and compileform_to_sexp arg_to_sexp body_to_sexp = function
 
 type compiledCode = Code of Srcloc.t * Srcloc.t sexp
 
+let loc_of_code = function
+  | Code (l,_) -> l
+
+type ('arg, 'body) callable
+  = CallMacro of Srcloc.t sexp (* Compiled program *)
+  | CallDefun of Srcloc.t sexp (* Env lookup *)
+  | CallPrim of Srcloc.t sexp
+
 (* Code generation phase *)
 type ('arg,'body) primaryCodegen =
   { prims : Srcloc.t sexp StringMap.t
   ; macros : Srcloc.t sexp StringMap.t
+  ; defuns : Srcloc.t sexp StringMap.t
   ; env : Srcloc.t sexp
-  ; finished_code : Srcloc.t sexp StringMap.t
-  ; finished_replacements : Srcloc.t sexp StringMap.t
   ; to_process : ('arg,'body) helperForm list
   ; final_expr : 'body bodyForm
   ; final_code : compiledCode option
   }
+
+let with_heading l name body = Cons (l,Atom (l,name),body)
+
+let cons_of_string_map l cvt_body map =
+  StringMap.bindings map
+  |> List.map
+    (fun (k,v) -> Cons (l,QuotedString (l,'\"',k),Cons (l,cvt_body v,Nil l)))
+  |> list_to_cons l location_of

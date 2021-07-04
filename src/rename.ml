@@ -18,8 +18,8 @@ and rename_in_cons namemap = function
         Atom (l,name)
     end
   | Cons (l,Atom (la,"q"),any) -> Cons (l,Atom (la,"q"),any)
-  | Cons (l,Atom (la,"quote"),Cons (_,v,Nil _)) ->
-    Cons (l,Atom (la,"q"),v)
+  | Cons (l,Atom (la,"quote"),Cons (lb,v,Nil lc)) ->
+    Cons (l,Atom (la,"quote"),Cons (lb,v,Nil lc))
   | Cons (_l,Atom (_la,"qq"),Cons (_,qqexpr,_)) -> rename_in_qq namemap qqexpr
   | Cons (l,head,tail) ->
     Cons (l,rename_in_cons namemap head,rename_in_cons namemap tail)
@@ -58,8 +58,19 @@ let rec rename_in_bodyform namemap = function
     in
     Let (l, new_bindings, rename_in_bodyform namemap locally_renamed_body)
 
-  | Expr (l, e) ->
-    Expr (l, rename_in_cons namemap e)
+  | Quoted e -> Quoted e
+
+  | Value (Atom (l,n)) ->
+    begin
+      try
+        Value (Atom (l,StringMap.find n namemap))
+      with _ ->
+        Value (Atom (l,n))
+    end
+
+  | Value v -> Value v
+
+  | Call (l,vs) -> Call (l, List.map (rename_in_bodyform namemap) vs)
 
 and rename_in_helperform namemap = function
   | Defconstant (l,n,body) ->

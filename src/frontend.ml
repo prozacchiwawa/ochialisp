@@ -1,5 +1,6 @@
 open Sexp
 open Comptypes
+open Prims
 open Preprocessor
 open Rename
 
@@ -18,7 +19,10 @@ and collect_used_names_bodyForm = function
       [ List.concat (List.map collect_used_names_binding bindings)
       ; collect_used_names_bodyForm expr
       ]
-  | Expr (_,e) -> collect_used_names_sexp e
+  | Quoted e -> []
+  | Value (Atom (l,v)) -> [v]
+  | Value _ -> []
+  | Call (l,vs) -> List.concat @@ List.map collect_used_names_bodyForm vs
 
 and collect_used_names_helperForm = function
   | Defconstant (_,_,value) -> collect_used_names_bodyForm value
@@ -71,10 +75,72 @@ let rec calculate_live_helpers opts last_names names helper_map =
     |> compBind
       (fun new_names -> calculate_live_helpers opts names new_names helper_map)
 
-let rec compile_bodyform = function
+let rec qq_to_expression = function
   | Cons
       ( l
-      , Atom ( _, "let" )
+      , Atom (_, "q")
+      , body
+      )  -> CompileOk (Quoted body)
+
+  | Cons
+      ( l
+      , Atom (_,"quote")
+      , Cons
+          ( _
+          , body
+          , Nil _
+          )
+      ) -> CompileOk (Quoted body)
+
+  | Cons
+      ( l
+      , Atom (_, "unquote")
+      , Cons
+          ( _
+          , body
+          , Nil _
+          )
+      ) -> compile_bodyform body
+
+  | Cons (l,f,r) ->
+    qq_to_expression_list (Cons (l,f,r))
+
+  | any -> CompileOk (Quoted any)
+
+and qq_to_expression_list = function
+  | Cons (l,f,r) ->
+    qq_to_expression f
+    |> compBind
+      (fun f ->
+         qq_to_expression_list r
+         |> compMap (fun r -> Call (l,[Value (Atom (l,"c")); f; r]))
+      )
+
+  | Nil l -> CompileOk (Quoted (Nil l))
+
+  | any -> CompileError (location_of any, "Bad list tail " ^ to_string any)
+
+and args_to_expression_list = function
+  | Nil l -> CompileOk []
+
+  | Cons
+      ( l
+      , first
+      , rest
+      ) ->
+    args_to_expression_list rest
+    |> compBind
+      (fun args ->
+         compile_bodyform first
+         |> compMap (fun f -> f :: args)
+      )
+
+  | any -> CompileError (location_of any, "Bad list tail " ^ to_string any)
+
+and compile_bodyform = function
+  | Cons
+      ( l
+      , Atom ( _, "let")
       , Cons
           ( _
           , _bindings
@@ -89,12 +155,64 @@ let rec compile_bodyform = function
 
   | Cons
       ( l
-      , Atom (_, "let" )
+      , Atom (_, "let")
       , _
       ) ->
     CompileError (l,"bad let form")
 
-  | any -> CompileOk (Expr (location_of any,any))
+  | Cons
+      ( l
+      , Atom (_, "q")
+      , body
+      ) ->
+    CompileOk (Quoted body)
+
+  | Cons
+      ( l
+      , Integer (_, "1")
+      , body
+      ) ->
+    CompileOk (Quoted body)
+
+  | Cons
+      ( l
+      , Atom (_, "quote")
+      , Cons
+          ( _
+          , body
+          , Nil _
+          )
+      ) ->
+    CompileOk (Quoted body)
+
+  | Cons
+      ( l
+      , Atom (_, "qq")
+      , Cons
+          ( _
+          , body
+          , Nil _
+          )
+      ) ->
+    qq_to_expression body
+
+  | Cons
+      ( l
+      , head
+      , rest
+      ) ->
+    let _ = Js.log @@ "first " ^ to_string head in
+    let _ = Js.log @@ "args_to_expresson_list " ^ to_string rest in
+    args_to_expression_list rest
+    |> compBind
+      (fun args ->
+         compile_bodyform head
+         |> compMap (fun func -> Call (l, func :: args))
+      )
+
+  | any ->
+    let _ = Js.log @@ "value " ^ to_string any in
+    CompileOk (Value any)
 
 and compile_defun l inline name args body =
   compile_bodyform body
@@ -203,6 +321,9 @@ and compile_mod_ mc opts args = function
     end
 
   | Cons (l,form,rest) ->
+    let _ =
+      Js.log @@ "compile_helperform (" ^ to_string form ^ " . " ^ to_string rest ^ ")"
+    in
     compile_helperform opts form
     |> compBind
       (function
