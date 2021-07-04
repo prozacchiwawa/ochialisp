@@ -21,6 +21,8 @@ let emptyOpts =
   { includeDirs = []
   ; filename = "test.clvm"
   ; assemble = true
+  ; compiler = None
+
   ; readNewFile =
       (fun _ _ name ->
          if name == "*macros*" then
@@ -43,9 +45,9 @@ let tests =
     ; opts = { emptyOpts with assemble = false }
     ; input = "(mod () (defmacro testmacro (A) (qq (+ 1 (unquote A)))) (testmacro 3))"
     }
-  ; { expected = CompileOk "(3 (1 . 1) 2 3)"
+  ; { expected = CompileOk "(16 (1 . 5) (1 . 8))"
     ; opts = { emptyOpts with assemble = false }
-    ; input = "(mod (a b) (defmacro function (BODY) (qq (opt (com (q . (unquote BODY)) (qq (unquote (macros))) (qq (unquote (symbols))))))) (defmacro if (A B C) (qq (a (i (unquote A) (function (unquote B)) (function (unquote C))) @))) (if 1 a b))"
+    ; input = "(mod () (defmacro if (A B C) (qq (a (i (unquote A) (com (unquote B)) (com (unquote C))) (q . 1)))) (if () (+ 1 3) (+ 5 8)))"
     }
   ]
 
@@ -76,7 +78,7 @@ let _ =
              Js.log @@ e.input ^ " on " ^ e.args ;
              Js.log "wanted:" ;
              Js.log e.expected ;
-             Node.Process.process##abort ()
+             failed := true
            end
          else
            Printf.printf "\r%s\r" (string_of_int i)
@@ -96,10 +98,21 @@ let _ =
              Js.log e.input ;
              Js.log "wanted:" ;
              Js.log e.expected ;
-             Node.Process.process##abort ()
+             failed := true
            end
          else
            Printf.printf "\r%s\r" (string_of_int i)
       )
   in
-  Js.log "\nTests PASSED\n"
+  (* Known bug in node: output doesn't always drain when destroying the process *)
+  Js.Global.setTimeout
+    (fun _ ->
+       if !failed then
+         begin
+           Js.log "\nTests FAILED\n" ;
+           Node.Process.process##abort ()
+         end
+       else
+         Js.log "\nTests PASSED\n"
+    )
+    100

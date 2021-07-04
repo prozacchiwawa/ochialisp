@@ -37,13 +37,14 @@ end
 
 module StringMapBuilder = MapBuilder(StringMap)
 
-type compilerOpts =
-  { includeDirs : string list
-  ; filename : string
-  ; readNewFile : compilerOpts -> string -> string -> (string * string) compileResult
-  ; compileProgram : compilerOpts -> Srcloc.t sexp -> Srcloc.t sexp compileResult
-  ; assemble : bool
-  }
+type compiledCode = Code of Srcloc.t * Srcloc.t sexp
+
+type ('arg, 'body) callable
+  = CallMacro of Srcloc.t sexp (* Compiled program *)
+  | CallDefun of Srcloc.t sexp (* Env lookup *)
+  | CallPrim of Srcloc.t sexp
+  | RunCompiler
+  | Nop
 
 let rec list_to_cons_ l loc_of accum = function
   | [] -> accum (Nil l)
@@ -71,6 +72,26 @@ and ('arg, 'body) helperForm
 (* Mod form *)
 and ('arg, 'body) compileForm
   = Mod of (Srcloc.t * 'arg * ('arg, 'body) helperForm list * 'body bodyForm)
+
+(* Code generation phase *)
+type ('arg,'body) primaryCodegen =
+  { prims : Srcloc.t sexp StringMap.t
+  ; macros : Srcloc.t sexp StringMap.t
+  ; defuns : Srcloc.t sexp StringMap.t
+  ; env : Srcloc.t sexp
+  ; to_process : ('arg,'body) helperForm list
+  ; final_expr : 'body bodyForm
+  ; final_code : compiledCode option
+  }
+
+type compilerOpts =
+  { includeDirs : string list
+  ; filename : string
+  ; readNewFile : compilerOpts -> string -> string -> (string * string) compileResult
+  ; compiler : (Srcloc.t sexp, Srcloc.t sexp) primaryCodegen option
+  ; compileProgram : compilerOpts -> Srcloc.t sexp -> Srcloc.t sexp compileResult
+  ; assemble : bool
+  }
 
 (* Frontend uses this to accumulate frontend forms *)
 type ('arg, 'body) modAccumulator
@@ -131,6 +152,16 @@ and bodyform_to_sexp l (body_to_sexp : 'body -> Srcloc.t sexp) :
 
 let loc_of_compileform = function
   | Mod (l,_,_,_) -> l
+
+let loc_of_helperform = function
+  | Defconstant (l,_,_) -> l
+  | Defmacro (l,_,_,_) -> l
+  | Defun (l,_,_,_,_) -> l
+
+let name_of_helperform = function
+  | Defconstant (_,n,_) -> n
+  | Defmacro (_,n,_,_) -> n
+  | Defun (_,n,_,_,_) -> n
 
 (* Serialize frontend forms to sexp for debugging *)
 let rec helperform_to_sexp arg_to_sexp body_to_sexp = function
@@ -202,26 +233,8 @@ and compileform_to_sexp arg_to_sexp body_to_sexp = function
           )
       )
 
-type compiledCode = Code of Srcloc.t * Srcloc.t sexp
-
 let loc_of_code = function
   | Code (l,_) -> l
-
-type ('arg, 'body) callable
-  = CallMacro of Srcloc.t sexp (* Compiled program *)
-  | CallDefun of Srcloc.t sexp (* Env lookup *)
-  | CallPrim of Srcloc.t sexp
-
-(* Code generation phase *)
-type ('arg,'body) primaryCodegen =
-  { prims : Srcloc.t sexp StringMap.t
-  ; macros : Srcloc.t sexp StringMap.t
-  ; defuns : Srcloc.t sexp StringMap.t
-  ; env : Srcloc.t sexp
-  ; to_process : ('arg,'body) helperForm list
-  ; final_expr : 'body bodyForm
-  ; final_code : compiledCode option
-  }
 
 let with_heading l name body = Cons (l,Atom (l,name),body)
 

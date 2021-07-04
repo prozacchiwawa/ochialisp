@@ -19,6 +19,7 @@ and collect_used_names_bodyForm = function
       [ List.concat (List.map collect_used_names_binding bindings)
       ; collect_used_names_bodyForm expr
       ]
+  | Quoted (Atom (l,v)) -> [v]
   | Quoted e -> []
   | Value (Atom (l,v)) -> [v]
   | Value _ -> []
@@ -36,61 +37,51 @@ and collect_used_names_compileForm = function
       ; collect_used_names_bodyForm expr
       ]
 
-let name_of_helper = function
-  | Defconstant (_,n,_) -> n
-  | Defmacro (_,n,_,_) -> n
-  | Defun (_,n,_,_,_) -> n
-
-let location_of_helper = function
-  | Defconstant (l,_,_) -> l
-  | Defmacro (l,_,_,_) -> l
-  | Defun (l,_,_,_,_) -> l
-
 let rec calculate_live_helpers opts last_names names helper_map =
+  let _ =
+    Js.log @@
+    Printf.sprintf "last_names %s names %s\n"
+      (String.concat ";" @@ StringSet.elements last_names)
+      (String.concat ";" @@ StringSet.elements names)
+  in
   if StringSet.cardinal last_names = StringSet.cardinal names then
-    CompileOk names
+    names
   else
-    let new_names = StringSet.diff last_names names in
-    List.fold_left
-      (fun already_found name ->
-         already_found
-         |> compBind
-           (fun found ->
-              try
-                let new_helper = StringMap.find name helper_map in
-                let even_newer_names =
-                  collect_used_names_helperForm new_helper
-                in
-                CompileOk
-                  (StringSet.union found (StringSet.of_list even_newer_names))
-              with _ ->
-                CompileError
-                  ( Srcloc.start opts.filename
-                  , Printf.sprintf "unbound name %s" name
-                  )
-           )
-      )
-      (CompileOk names)
-      (StringSet.elements new_names)
-    |> compBind
-      (fun new_names -> calculate_live_helpers opts names new_names helper_map)
+    let new_names = StringSet.diff names last_names in
+    let _ = Js.log @@ "find new names " ^ (String.concat ";" @@ StringSet.elements new_names) in
+    let needed_helpers =
+      List.fold_left
+        (fun found name ->
+           try
+             let new_helper = StringMap.find name helper_map in
+             let even_newer_names =
+               collect_used_names_helperForm new_helper
+             in
+             (StringSet.union found (StringSet.of_list even_newer_names))
+           with _ ->
+             found
+        )
+        names
+        (StringSet.elements new_names)
+    in
+    calculate_live_helpers opts names needed_helpers helper_map
 
 let rec qq_to_expression = function
   | Cons
       ( l
-      , Atom (_, "q")
+      , Atom (lq, "q")
       , body
-      )  -> CompileOk (Quoted body)
+      )  -> CompileOk (Quoted (Cons (l,Atom (lq,"q"),body)))
 
   | Cons
       ( l
-      , Atom (_,"quote")
+      , Atom (lq,"quote")
       , Cons
-          ( _
+          ( lb
           , body
-          , Nil _
+          , Nil ln
           )
-      ) -> CompileOk (Quoted body)
+      ) -> CompileOk (Quoted (Cons (l,Atom (lq,"quote"),Cons (lb,body,Nil ln))))
 
   | Cons
       ( l
@@ -201,8 +192,6 @@ and compile_bodyform = function
       , head
       , rest
       ) ->
-    let _ = Js.log @@ "first " ^ to_string head in
-    let _ = Js.log @@ "args_to_expresson_list " ^ to_string rest in
     args_to_expression_list rest
     |> compBind
       (fun args ->
@@ -211,7 +200,6 @@ and compile_bodyform = function
       )
 
   | any ->
-    let _ = Js.log @@ "value " ^ to_string any in
     CompileOk (Value any)
 
 and compile_defun l inline name args body =
@@ -321,9 +309,6 @@ and compile_mod_ mc opts args = function
     end
 
   | Cons (l,form,rest) ->
-    let _ =
-      Js.log @@ "compile_helperform (" ^ to_string form ^ " . " ^ to_string rest ^ ")"
-    in
     compile_helperform opts form
     |> compBind
       (function
@@ -395,7 +380,7 @@ and frontend opts pre_forms =
       | ModFinal m -> CompileOk m
     )
   |> compMap (rename_in_compileform StringMap.empty)
-  |> compBind
+  |> compMap
     (function
       | Mod (l,args,helpers,expr) ->
         let expr_names =
@@ -403,17 +388,16 @@ and frontend opts pre_forms =
         in
         let helper_map =
           helpers
-          |> List.map (fun h -> (name_of_helper h, h))
+          |> List.map (fun h -> (name_of_helperform h, h))
           |> StringMapBuilder.go
         in
-        calculate_live_helpers opts StringSet.empty expr_names helper_map
-        |> compMap
-          (fun helper_names ->
-             let live_helpers =
-               List.filter
-                 (fun h -> StringSet.mem (name_of_helper h) helper_names)
-                 helpers
-             in
-             Mod (l,args,live_helpers,expr)
-          )
+        let helper_names =
+          calculate_live_helpers opts StringSet.empty expr_names helper_map
+        in
+        let live_helpers =
+          List.filter
+            (fun h -> StringSet.mem (name_of_helperform h) helper_names)
+            helpers
+        in
+        Mod (l,args,live_helpers,expr)
     )
