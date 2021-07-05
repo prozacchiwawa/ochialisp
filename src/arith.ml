@@ -18,7 +18,8 @@ let do_arith l op a b =
     let result = op a b in
     RunOk (Integer (l,BigInteger.toString result ~base:10 ()))
 
-let add a b = BigInteger.add a (`BigInt b)
+let add a b =
+  BigInteger.add a (`BigInt b)
 
 let subtract a b = BigInteger.subtract a (`BigInt b)
 

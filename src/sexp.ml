@@ -47,17 +47,21 @@ let matches_integral s =
 let normalize_int v =
   BigInteger.toString (BigInteger.bigInt (`String v)) ~base:10 ()
 
+let make_atom l v =
+  if matches_integral v then
+    Integer (l,normalize_int v)
+  else
+    Atom (l,v)
+
 let emit (a : 'loc sexp) (p : 'loc sexpParseState) : 'loc sexpParseResult =
   match a with
   | Atom (l,v) ->
     let alen = String.length v in
-    if matches_integral v then
-      PEmit (Integer (l,normalize_int v),p)
-    else if alen > 0 && String.get v 0 == '#' then
+    if alen > 0 && String.get v 0 == '#' then
       (* assemble_from_ir: #a == a *)
       PEmit (Atom (l,String.sub v 1 (alen - 1)),p)
     else
-      PEmit (a,p)
+      PEmit (make_atom l v,p)
   | any -> PEmit (any,p)
 
 let error l t : 'loc sexpParseResult = PError (l, t)
@@ -170,7 +174,7 @@ let rec parse_sexp_step (ext : 'loc -> 'loc -> 'loc) (loc : 'loc) : 'loc sexpPar
             else if tlen > 0 && String.get t 0 == '#' then
               Atom (l,String.sub t 1 (tlen - 1))
             else
-              Atom (l,t)
+              make_atom l t
           in
           let finished_list = make_cons ext parsed_atom (Nil loc) in
           emit (list_content finished_list) Empty
@@ -198,7 +202,7 @@ let rec parse_sexp_step (ext : 'loc -> 'loc -> 'loc) (loc : 'loc) : 'loc sexpPar
         | ('.', Empty) -> error loc "Multiple dots in list notation are illegal"
         | (')', Empty) -> emit (list_content (Nil loc)) Empty
         | (')', Bareword (l,t)) ->
-           let parsed_atom = Atom (l,t) in
+           let parsed_atom = make_atom l t in
            emit (list_content parsed_atom) Empty
         | (ch, _) ->
           begin
@@ -226,7 +230,7 @@ let rec parse_sexp_inner ext start advance p n s =
   if n >= String.length s then
     match p with
     | Empty -> Success []
-    | Bareword (l, t) -> Success [Atom (l,t)]
+    | Bareword (l, t) -> Success [make_atom l t]
     | CommentText (_, _) -> Success []
     | Quoted (l, _, _) -> Failure (l, "unterminated quoted string")
     | QuotedEscaped (l, _, _) -> Failure (l, "unterminated quoted string with escape")
