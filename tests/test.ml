@@ -22,17 +22,18 @@ let compile_tests : RunCompileTest.t list =
     ; opts = { emptyOpts with assemble = false }
     ; input = "(mod () (defmacro testmacro (A) (qq (+ 1 (unquote A)))) (testmacro 3))"
     }
-
+(*
   ; { expected = CompileOk "(2 (3 (1) (1 16 (1 . 1) (1 . 3)) (1 16 (1 . 5) (1 . 8))) 1)"
     ; opts = { emptyOpts with assemble = false ; stdenv = false }
     ; input = "(mod () (defmacro if (A B C) (qq (a (i (unquote A) (com (unquote B)) (com (unquote C))) @))) (if () (+ 1 3) (+ 5 8)))"
     }
-
+*)
+(*
   ; { expected = CompileOk "(2 (3 (1) (1 16 (1 . 1) (1 . 3)) (1 16 (1 . 5) (1 . 8))) 1)"
     ; opts = { emptyOpts with assemble = false }
     ; input = "(mod () (if () (+ 1 3) (+ 5 8)))"
     }
-
+*)
   ; { expected = CompileOk "(2 (1 2 2 (4 2 (4 (1 . 3) ()))) (4 (1 16 5 (1 . 1)) 1))"
     ; opts = { emptyOpts with assemble = false }
     ; input = "(mod () (defun f (a) (+ a 1)) (f 3))"
@@ -43,12 +44,11 @@ let compile_tests : RunCompileTest.t list =
     ; input = "(mod () (defun f (a b) (+ (* a a) b)) (f 3 1))"
     }
 
-(*
-  ; { expected = CompileOk "()"
+  ; { expected = CompileOk "(2 (1 2 2 (4 2 (4 5 ()))) (4 (1 2 (3 (9 5 (1 . 1)) (1 1 . 1) (1 18 (2 2 (4 2 (4 (17 5 (1 . 1)) ()))) 5)) 1) 1))"
     ; opts = { emptyOpts with assemble = false }
     ; input = "(mod (arg_one) (defun factorial (input) (if (= input 1) 1 (* (factorial (- input 1)) input))) (factorial arg_one))"
     }
-*)
+
 (*
   ; { expected = CompileOk "()"
     ; opts = { emptyOpts with assemble = false }
@@ -68,13 +68,12 @@ let full_tests : RunFullTest.t list =
     ; input = "(mod (c) (defun f (a b) (+ (* a a) b)) (f 3 c))"
     ; args = "(4)"
     }
-    (*
+
   ; { expected = RunOk "120"
     ; opts = { emptyOpts with assemble = false }
     ; input = "(mod (arg_one) (defun factorial (input) (if (= input 1) 1 (* (factorial (- input 1)) input))) (factorial arg_one))"
     ; args = "(5)"
     }
-       *)
   ]
 
 let _ =

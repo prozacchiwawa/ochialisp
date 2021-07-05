@@ -1,5 +1,4 @@
 open Sexp
-open Runtypes
 
 let usage () =
   Printf.printf "Usage: clvmrun [file] '[arg-atom-or-list]'\n"
@@ -9,12 +8,9 @@ let main args =
   | [infile;args] ->
     begin
       let incode = Node.Fs.readFileSync infile `utf8 in
-      match Clvm.parse_and_run infile incode args with
-      | RunOk v -> Printf.printf "%s" (to_string v)
-      | RunExn (l,e) ->
-        Printf.printf "%s(%s): throw(x) %s\n" infile (Srcloc.toString l) (to_string e)
-      | RunError (l,e) ->
-        Printf.printf "%s(%s): %s\n" infile (Srcloc.toString l) e
+      Printf.printf "%s" @@
+      Clvm.run_to_string to_string @@
+      Clvm.parse_and_run infile incode args
     end
   | _ -> usage ()
 

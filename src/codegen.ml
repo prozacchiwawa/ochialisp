@@ -76,7 +76,11 @@ let codegen_to_sexp opts compiler =
     ; with_heading l "macros" @@
       cons_of_string_map l identity compiler.macros
     ; with_heading l "defuns" @@
-      cons_of_string_map l identity compiler.defuns
+      cons_of_string_map l
+        (fun dc ->
+           Cons (l,dc.requiredEnv, Cons (l,dc.code,Nil l))
+        )
+        compiler.defuns
     ; with_heading l "to_process" @@
       list_to_cons l location_of
         (List.map (fun h -> Atom (l,name_of_helperform h)) compiler.to_process)
@@ -117,7 +121,11 @@ let rec get_callable _opts compiler _l atom =
   | any -> CompileError (location_of any, "can't call object " ^ to_string any)
 
 and process_macro_call opts compiler l args code =
-  let run_outcome = run code (Cons (l,compiler.env,args)) in
+  let converted_args = List.map (bodyform_to_sexp l identity) args in
+  let args_to_macro = list_to_cons l location_of converted_args in
+  let run_outcome =
+    run code (Cons (l,compiler.env,args_to_macro))
+  in
   match run_outcome with
   | RunExn (ml,x) ->
     CompileError
@@ -154,18 +162,26 @@ and generate_args_code opts compiler l : Srcloc.t sexp bodyForm list -> Srcloc.t
            )
       )
 
-and process_defun_call _opts _compiler l args lookup =
+and process_defun_call opts _compiler l args lookup =
   let rec cons_up = function
     | Cons (l,h,r) -> primcons l h (cons_up r)
     | any -> any
   in
   let env = primcons l (Integer (l,"2")) (cons_up args) in
-  CompileOk
-    (Code
-       ( l
-       , primapply l lookup env
-       )
-    )
+  if opts.inDefun then
+    CompileOk
+      (Code
+         ( l
+         , primapply l lookup env
+         )
+      )
+  else
+    CompileOk
+      (Code
+         ( l
+         , primapply l lookup env
+         )
+      )
 
 
 (* (Code (l, Cons (l, Atom (l,"q"), env))) *)
@@ -186,47 +202,76 @@ and generate_expr_code (opts : compilerOpts) compiler expr : compiledCode compil
   | Value (Atom (l,v)) ->
     create_name_lookup compiler l v
     |> compMap (fun f -> Code (l, f))
-  | Value x -> CompileOk (Code (location_of x, primquote (location_of x) x))
+  (* CompileOk (Code (location_of x, primquote (location_of x) x))*)
+  | Value x ->
+    CompileOk (Code (location_of x, primquote (location_of x) x))
   | Call (l,[]) -> CompileError (l, "created a call with no forms")
-  | Call (l,hd :: tl) ->
-    generate_args_code opts compiler l tl
-    |> compBind (fun args -> get_call_name l hd |> compMap (fun h -> (h,args)))
+  | Call (l,Value (Atom (al,an)) :: tl) ->
+    get_callable opts compiler l (Atom (al,an))
     |> compBind
-      (fun (hd,args) ->
-         get_callable opts compiler l hd
-         |> compBind
-           (function
-             | CallMacro code ->
-               process_macro_call opts compiler l args code
+      (function
+        | CallMacro code ->
+          process_macro_call opts compiler l tl code
 
-             | CallDefun lookup ->
+        | CallDefun lookup ->
+          generate_args_code opts compiler l tl
+          |> compBind
+            (fun args ->
                process_defun_call opts compiler l args lookup
+            )
 
-             | CallPrim p -> CompileOk (Code (l, Cons (l,p,args)))
+        | CallPrim p ->
+          generate_args_code opts compiler l tl
+          |> compBind
+            (fun args ->
+               CompileOk (Code (l, Cons (l,p,args)))
+            )
 
-             | RunCompiler ->
-               match args with
-               | Cons (_,body,Nil _) ->
-                 let opts =
-                   { opts with
-                     compiler = Some compiler
-                   ; assemble = false
-                   ; stdenv = false
-                   }
-                 in
-                 opts.compileProgram opts body
-                 |> compMap
-                   (fun code ->
-                      Code (l,primquote l code)
-                   )
+        | RunCompiler ->
+          match tl with
+          | [compile] ->
+            let opts =
+              { opts with
+                compiler = Some compiler
+              ; assemble = false
+              ; stdenv = false
+              ; inDefun = true
+              }
+            in
+            let use_body =
+              Cons
+                ( l
+                , Atom (l, "mod")
+                , Cons
+                    ( l
+                    , Nil l
+                    , Cons
+                        ( l
+                        , bodyform_to_sexp l identity compile
+                        , Nil l
+                        )
+                    )
+                )
+            in
+            opts.compileProgram opts use_body
+            |> compMap
+              (fun code ->
+                 Code (l, primquote l code)
+              )
 
-               | any ->
-                 CompileError
-                   ( l
-                   , Printf.sprintf
-                       "wierdly formed compile request: %s" (to_string any)
-                   )
-           )
+          | any ->
+            CompileError
+              ( l
+              , Printf.sprintf
+                  "wierdly formed compile request: %s"
+                  (String.concat ";" @@ List.map to_string @@ List.map (bodyform_to_sexp l identity) any)
+              )
+      )
+  | ex ->
+    CompileError
+      ( loc_of_bodyform ex
+      , "don't know how to compile " ^
+        to_string (bodyform_to_sexp (loc_of_bodyform ex) identity ex)
       )
 
 and combine_defun_env old_env new_args =
@@ -283,23 +328,17 @@ and codegen_ opts compiler = function
             )
         )
     in
-    let _ =
-      Js.log @@
-      Printf.sprintf "raw input %s is %s"
-        name
-        (to_string tocompile)
-    in
     opts.compileProgram opts tocompile
     |> compMap
       (fun code ->
-         let _ =
-           Js.log @@
-           Printf.sprintf "compiled %s to %s"
-             name
-             (to_string code)
-         in
          { compiler with
-           defuns = StringMap.add name code compiler.defuns
+           defuns =
+             StringMap.add
+               name
+               { requiredEnv = args
+               ; code = code
+               }
+               compiler.defuns
          }
       )
 
@@ -361,7 +400,7 @@ and finalize_env_ opts c _l env =
     else
       begin
         try
-          CompileOk (StringMap.find v c.defuns)
+          CompileOk (StringMap.find v c.defuns).code
         with _ ->
           CompileError
             (l, "A defun was referenced in the defun env but not found " ^ v)

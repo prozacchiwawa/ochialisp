@@ -1,5 +1,4 @@
 open Sexp
-open Prims
 
 module StringSet = Set.Make(String)
 module StringMap = Map.Make(String)
@@ -72,11 +71,16 @@ and ('arg, 'body) helperForm
 and ('arg, 'body) compileForm
   = Mod of (Srcloc.t * 'arg * ('arg, 'body) helperForm list * 'body bodyForm)
 
+type defunCall =
+  { requiredEnv : Srcloc.t sexp
+  ; code : Srcloc.t sexp
+  }
+
 (* Code generation phase *)
 type ('arg,'body) primaryCodegen =
   { prims : Srcloc.t sexp StringMap.t
   ; macros : Srcloc.t sexp StringMap.t
-  ; defuns : Srcloc.t sexp StringMap.t
+  ; defuns : defunCall StringMap.t
   ; parentfns : StringSet.t
   ; env : Srcloc.t sexp
   ; to_process : ('arg,'body) helperForm list
@@ -146,7 +150,9 @@ and bodyform_to_sexp l (body_to_sexp : 'body -> Srcloc.t sexp) :
           )
       )
 
-  | Quoted body -> primquote (location_of body) body
+  | Quoted body ->
+    let loc = location_of body in
+    Cons (loc, Atom (loc,"q"), body)
 
   | Value body -> body
 

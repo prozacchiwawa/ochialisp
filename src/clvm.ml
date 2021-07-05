@@ -446,3 +446,11 @@ let parse_and_run file content args =
     RunError (l,m)
   | (Sexp.Failure (l,m), _) ->
     RunError (l,m)
+
+let run_to_string (cvt : 'a -> string) (r : 'a runResult) =
+  match r with
+  | RunOk v -> Printf.sprintf "%s" (cvt v)
+  | RunExn (l,e) ->
+    Printf.sprintf "%s: throw(x) %s\n" (Srcloc.toString l) (to_string e)
+  | RunError (l,e) ->
+    Printf.sprintf "%s: %s\n" (Srcloc.toString l) e

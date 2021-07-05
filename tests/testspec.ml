@@ -70,11 +70,11 @@ module RunSpecT = struct
   let get_expected e = e.expected
   let show_failure e cr =
     Js.log "\nunexpected output:" ;
-    Js.log cr ;
+    Js.log @@ run_to_string identity cr ;
     Js.log "for input:" ;
     Js.log @@ e.input ^ " on " ^ e.args ;
     Js.log "wanted:" ;
-    Js.log e.expected
+    Js.log @@ run_to_string identity e.expected
 
   let get_result e =
     parse_and_run "*clvm*" e.input e.args |> runMap Sexp.to_string
@@ -92,13 +92,13 @@ module FullSpecT = struct
   let get_expected e = e.expected
   let show_failure e cr =
     Js.log "\nunexpected output:" ;
-    Js.log cr ;
+    Js.log @@ run_to_string identity cr ;
     Js.log "for input: " ;
     Js.log e.input ;
     Js.log "with args: " ;
     Js.log e.args ;
     Js.log "wanted:" ;
-    Js.log e.expected
+    Js.log @@ run_to_string identity e.expected
   let get_result e =
     match compile_file e.opts e.input with
     | CompileOk compiled ->
