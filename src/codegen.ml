@@ -85,7 +85,7 @@ let codegen_to_sexp opts compiler =
       Cons (l,bodyform_to_sexp l identity compiler.final_expr,Nil l)
     ]
 
-let rec get_callable _opts compiler _l atom =
+let rec get_callable opts compiler _l atom =
   match atom with
   | Atom (l,name) ->
     let macro =
@@ -95,10 +95,7 @@ let rec get_callable _opts compiler _l atom =
         None
     in
     let defun =
-      try
-        Some (StringMap.find name compiler.defuns)
-      with _ ->
-        None
+      create_name_lookup compiler l name
     in
     let prim =
       try
@@ -109,7 +106,7 @@ let rec get_callable _opts compiler _l atom =
     begin
       match (macro, defun, prim, atom) with
       | (Some macro, _, _, _) -> CompileOk (CallMacro macro)
-      | (_, Some defun, _, _) -> CompileOk (CallDefun defun)
+      | (_, CompileOk defun, _, _) -> CompileOk (CallDefun defun)
       | (_, _, Some prim, _) -> CompileOk (CallPrim prim)
       | (_, _, _, Atom (_, "com")) -> CompileOk RunCompiler
       | _ -> CompileError (l, "no such callable '" ^ name ^ "'")
@@ -157,8 +154,21 @@ and generate_args_code opts compiler l : Srcloc.t sexp bodyForm list -> Srcloc.t
            )
       )
 
-and process_defun_call _opts _compiler l _args _lookup =
-  CompileError (l,"can't yet do defun call")
+and process_defun_call _opts _compiler l args lookup =
+  let rec cons_up = function
+    | Cons (l,h,r) -> primcons l h (cons_up r)
+    | any -> any
+  in
+  let env = primcons l (Integer (l,"2")) (cons_up args) in
+  CompileOk
+    (Code
+       ( l
+       , primapply l lookup env
+       )
+    )
+
+
+(* (Code (l, Cons (l, Atom (l,"q"), env))) *)
 
 and get_call_name l = function
   | Value (Atom (l,name)) -> CompileOk (Atom (l,name))
@@ -248,10 +258,11 @@ and codegen_ opts compiler = function
       )
 
   | Defun (loc, name, _inline, args, body) ->
-    let _ = Js.log @@ "defun " ^ name ^ " args " ^ to_string args in
     let opts =
       { opts with
-        compiler = Some compiler
+        compiler =
+          Some { compiler with parentfns = StringSet.add name compiler.parentfns }
+      ; inDefun = true
       ; assemble = false
       ; stdenv = false
       ; startEnv = Some (combine_defun_env compiler.env args)
@@ -275,9 +286,6 @@ and codegen_ opts compiler = function
     opts.compileProgram opts tocompile
     |> compMap
       (fun code ->
-         let _ =
-           Js.log @@ "defun " ^ to_string tocompile ^ " to " ^ to_string code
-         in
          { compiler with
            defuns = StringMap.add name code compiler.defuns
          }
@@ -293,6 +301,8 @@ and empty_compiler l =
   ; macros = StringMap.empty
 
   ; defuns = StringMap.empty
+
+  ; parentfns = StringSet.empty
 
   ; env = Cons (l, Nil l, Nil l)
 
@@ -330,6 +340,32 @@ and final_codegen (opts : compilerOpts) (compiler : (Srcloc.t sexp, Srcloc.t sex
        { compiler with final_code = Some (Code (l,code)) }
     )
 
+and finalize_env_ opts c _l env =
+  match env with
+  | Atom (l,v) ->
+    (* Parentfns are functions in progress in the parent *)
+    if StringSet.mem v c.parentfns then
+      CompileOk (Nil l)
+    else
+      begin
+        try
+          CompileOk (StringMap.find v c.defuns)
+        with _ ->
+          CompileError
+            (l, "A defun was referenced in the defun env but not found " ^ v)
+      end
+
+  | Cons (l,h,r) ->
+    finalize_env_ opts c l h
+    |> compBind (fun h -> finalize_env_ opts c l r |> compMap (fun r -> Cons (l,h,r)))
+
+  | any -> CompileOk any
+
+and finalize_env opts c _l =
+  match c.env with
+  | Cons (l,h,_r) -> finalize_env_ opts c l h
+  | any -> CompileOk any
+
 and codegen opts cmod =
   let compiler = start_codegen opts cmod in
   List.fold_left
@@ -339,9 +375,26 @@ and codegen opts cmod =
   |> compBind (final_codegen opts)
   |> compBind
     (fun c ->
-       match c.final_code with
-       | None ->
-         CompileError (Srcloc.start opts.filename, "Failed to generate code")
-       | Some (Code (_l,code)) ->
-         CompileOk code
+       let l = loc_of_compileform cmod in
+       finalize_env opts c l
+       |> compBind
+         (fun final_env ->
+            match c.final_code with
+            | None ->
+              CompileError (Srcloc.start opts.filename, "Failed to generate code")
+            | Some (Code (l,code)) ->
+              if opts.inDefun || nilp final_env then
+                CompileOk code
+              else
+                CompileOk
+                  (primapply
+                     l
+                     (primquote l code)
+                     (primcons
+                        l
+                        (primquote l final_env)
+                        (Atom (l,"1"))
+                     )
+                  )
+         )
     )

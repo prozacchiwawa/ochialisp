@@ -77,6 +77,7 @@ type ('arg,'body) primaryCodegen =
   { prims : Srcloc.t sexp StringMap.t
   ; macros : Srcloc.t sexp StringMap.t
   ; defuns : Srcloc.t sexp StringMap.t
+  ; parentfns : StringSet.t
   ; env : Srcloc.t sexp
   ; to_process : ('arg,'body) helperForm list
   ; final_expr : 'body bodyForm
@@ -89,6 +90,7 @@ type compilerOpts =
   ; readNewFile : compilerOpts -> string -> string -> (string * string) compileResult
   ; compiler : (Srcloc.t sexp, Srcloc.t sexp) primaryCodegen option
   ; compileProgram : compilerOpts -> Srcloc.t sexp -> Srcloc.t sexp compileResult
+  ; inDefun : bool
   ; assemble : bool
   ; stdenv : bool
   ; startEnv : Srcloc.t sexp option
