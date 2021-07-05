@@ -1,8 +1,4 @@
 open Comptypes
-open Clvm
-open Compiler
-open Frontend
-open Codegen
 open Runtypes
 open Testspec
 
@@ -50,9 +46,15 @@ let compile_tests : RunCompileTest.t list =
 (*
   ; { expected = CompileOk "()"
     ; opts = { emptyOpts with assemble = false }
+    ; input = "(mod (arg_one) (defun factorial (input) (if (= input 1) 1 (* (factorial (- input 1)) input))) (factorial arg_one))"
+    }
+*)
+(*
+  ; { expected = CompileOk "()"
+    ; opts = { emptyOpts with assemble = false }
     ; input = "(mod () (defun makelist (a) (if a (c (q . 4) (f a) (makelist (r a))) (q . ()))) (makelist (q . (1 2 3))))"
     }
-   *)
+*)
   ]
 
 let full_tests : RunFullTest.t list =
@@ -66,6 +68,13 @@ let full_tests : RunFullTest.t list =
     ; input = "(mod (c) (defun f (a b) (+ (* a a) b)) (f 3 c))"
     ; args = "(4)"
     }
+    (*
+  ; { expected = RunOk "120"
+    ; opts = { emptyOpts with assemble = false }
+    ; input = "(mod (arg_one) (defun factorial (input) (if (= input 1) 1 (* (factorial (- input 1)) input))) (factorial arg_one))"
+    ; args = "(5)"
+    }
+       *)
   ]
 
 let _ =

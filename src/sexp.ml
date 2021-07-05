@@ -18,7 +18,7 @@ type 'loc sexpParseState
   = Empty
   | CommentText of ('loc * string)
   | Bareword of ('loc * string)
-  | Quoted of ('loc * char * string)
+  | QuotedText of ('loc * char * string)
   | QuotedEscaped of ('loc * char * string)
   | OpenList of 'loc
   | ParsingList of ('loc * 'loc sexpParseState * ('loc sexp -> 'loc sexp))
@@ -113,8 +113,8 @@ let rec parse_sexp_step (ext : 'loc -> 'loc -> 'loc) (loc : 'loc) : 'loc sexpPar
       | '\n' -> resume @@ Empty
       | ';' -> resume @@ CommentText (loc, "")
       | ')' -> error loc "Too many close parens"
-      | '"' -> resume @@ Quoted (loc, '"', "")
-      | '\'' -> resume @@ Quoted (loc, '\'', "")
+      | '"' -> resume @@ QuotedText (loc, '"', "")
+      | '\'' -> resume @@ QuotedText (loc, '\'', "")
       | x ->
         if isspace x then
           resume Empty
@@ -134,7 +134,7 @@ let rec parse_sexp_step (ext : 'loc -> 'loc -> 'loc) (loc : 'loc) : 'loc sexpPar
         emit (Atom (pl,a)) Empty
       else
         resume @@ Bareword (ext pl loc, a ^ (String.make 1 ch))
-  | Quoted (pl, term, t) ->
+  | QuotedText (pl, term, t) ->
     begin
       function
       | '\\' -> resume @@ QuotedEscaped (pl, term, t)
@@ -142,10 +142,10 @@ let rec parse_sexp_step (ext : 'loc -> 'loc -> 'loc) (loc : 'loc) : 'loc sexpPar
         if ch == term then
           emit (QuotedString (ext pl loc, term, t)) Empty
         else
-          resume @@ Quoted (pl, term, t ^ (String.make 1 ch))
+          resume @@ QuotedText (pl, term, t ^ (String.make 1 ch))
     end
   | QuotedEscaped (pl, term, t) ->
-    fun ch -> resume @@ Quoted (pl, term, t ^ (String.make 1 ch))
+    fun ch -> resume @@ QuotedText (pl, term, t ^ (String.make 1 ch))
   | OpenList pl ->
     begin
       function
@@ -232,7 +232,7 @@ let rec parse_sexp_inner ext start advance p n s =
     | Empty -> Success []
     | Bareword (l, t) -> Success [make_atom l t]
     | CommentText (_, _) -> Success []
-    | Quoted (l, _, _) -> Failure (l, "unterminated quoted string")
+    | QuotedText (l, _, _) -> Failure (l, "unterminated quoted string")
     | QuotedEscaped (l, _, _) -> Failure (l, "unterminated quoted string with escape")
     | OpenList l -> Failure (l, "Unterminated list (empty)")
     | ParsingList (l, _, _) -> Failure (l, "Unterminated mid list")

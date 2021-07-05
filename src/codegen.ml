@@ -283,9 +283,21 @@ and codegen_ opts compiler = function
             )
         )
     in
+    let _ =
+      Js.log @@
+      Printf.sprintf "raw input %s is %s"
+        name
+        (to_string tocompile)
+    in
     opts.compileProgram opts tocompile
     |> compMap
       (fun code ->
+         let _ =
+           Js.log @@
+           Printf.sprintf "compiled %s to %s"
+             name
+             (to_string code)
+         in
          { compiler with
            defuns = StringMap.add name code compiler.defuns
          }
