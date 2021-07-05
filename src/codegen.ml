@@ -1,7 +1,6 @@
 open Prims
 open Sexp
 open Comptypes
-open Frontend
 open Clvm
 
 (* As in the python code, produce a pair whose (thanks richard)
@@ -86,7 +85,7 @@ let codegen_to_sexp opts compiler =
       Cons (l,bodyform_to_sexp l identity compiler.final_expr,Nil l)
     ]
 
-let rec get_callable opts compiler l atom =
+let rec get_callable _opts compiler _l atom =
   match atom with
   | Atom (l,name) ->
     let macro =
@@ -158,7 +157,7 @@ and generate_args_code opts compiler l : Srcloc.t sexp bodyForm list -> Srcloc.t
            )
       )
 
-and process_defun_call opts compiler l args lookup =
+and process_defun_call _opts _compiler l _args _lookup =
   CompileError (l,"can't yet do defun call")
 
 and get_call_name l = function
@@ -205,16 +204,9 @@ and generate_expr_code (opts : compilerOpts) compiler expr : compiledCode compil
                    ; stdenv = false
                    }
                  in
-                 let evalcode = run body compiler.env in
                  opts.compileProgram opts body
                  |> compMap
                    (fun code ->
-                      let _ =
-                        Js.log @@
-                        Printf.sprintf "compiled code %s yielding %s"
-                          (to_string body)
-                          (to_string code)
-                      in
                       Code (l,primquote l code)
                    )
 
@@ -228,14 +220,13 @@ and generate_expr_code (opts : compilerOpts) compiler expr : compiledCode compil
       )
 
 and codegen_ opts compiler = function
-  | Defconstant (loc, name, body) ->
+  | Defconstant (_loc, _name, _body) ->
     CompileError (Srcloc.start opts.filename, "can't process defconstant forms yet")
 
-  | Defmacro (loc, name, args, body) ->
+  | Defmacro (_loc, name, _args, body) ->
     let macroProgram =
       compileform_to_sexp identity identity body
     in
-    let _ = Js.log @@ "compile macro " ^ name ^ " with " ^ to_string macroProgram in
     let opts =
       { opts with
         compiler = Some compiler
@@ -251,7 +242,7 @@ and codegen_ opts compiler = function
          }
       )
 
-  | Defun (loc, name, inline, args, body) ->
+  | Defun (_loc, _name, _inline, _args, _body) ->
     CompileError (Srcloc.start opts.filename, "can't process defun forms yet")
 
 and is_defun = function
@@ -298,8 +289,6 @@ and final_codegen (opts : compilerOpts) (compiler : (Srcloc.t sexp, Srcloc.t sex
 
 and codegen opts cmod =
   let compiler = start_codegen opts cmod in
-  let _ = Js.log @@ "compile " ^ to_string (codegen_to_sexp opts compiler) in
-  let _ = Js.log @@ "on code " ^ to_string (compileform_to_sexp identity identity cmod) in
   List.fold_left
     (fun c f -> compBind (fun comp -> codegen_ opts comp f) c)
     (CompileOk compiler)
@@ -310,6 +299,6 @@ and codegen opts cmod =
        match c.final_code with
        | None ->
          CompileError (Srcloc.start opts.filename, "Failed to generate code")
-       | Some (Code (l,code)) ->
+       | Some (Code (_l,code)) ->
          CompileOk code
     )

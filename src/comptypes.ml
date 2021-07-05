@@ -44,7 +44,6 @@ type ('arg, 'body) callable
   | CallDefun of Srcloc.t sexp (* Env lookup *)
   | CallPrim of Srcloc.t sexp
   | RunCompiler
-  | Nop
 
 let rec list_to_cons_ l loc_of accum = function
   | [] -> accum (Nil l)

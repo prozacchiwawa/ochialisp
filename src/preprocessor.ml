@@ -53,7 +53,7 @@ let process_pp_form opts = function
   | any -> CompileOk [any]
 
 let rec preprocess_ opts : Srcloc.t sexp -> Srcloc.t sexp list compileResult = function
-  | Cons (l,head,Nil nl) ->
+  | Cons (_l,head,Nil _nl) ->
     process_pp_form opts head
 
   | Cons (_,head,rest) ->

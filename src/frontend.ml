@@ -1,6 +1,5 @@
 open Sexp
 open Comptypes
-open Prims
 open Preprocessor
 open Rename
 
@@ -19,11 +18,11 @@ and collect_used_names_bodyForm = function
       [ List.concat (List.map collect_used_names_binding bindings)
       ; collect_used_names_bodyForm expr
       ]
-  | Quoted (Atom (l,v)) -> [v]
-  | Quoted e -> []
-  | Value (Atom (l,v)) -> [v]
+  | Quoted (Atom (_l,v)) -> [v]
+  | Quoted _e -> []
+  | Value (Atom (_l,v)) -> [v]
   | Value _ -> []
-  | Call (l,vs) -> List.concat @@ List.map collect_used_names_bodyForm vs
+  | Call (_l,vs) -> List.concat @@ List.map collect_used_names_bodyForm vs
 
 and collect_used_names_helperForm = function
   | Defconstant (_,_,value) -> collect_used_names_bodyForm value
@@ -38,17 +37,10 @@ and collect_used_names_compileForm = function
       ]
 
 let rec calculate_live_helpers opts last_names names helper_map =
-  let _ =
-    Js.log @@
-    Printf.sprintf "last_names %s names %s\n"
-      (String.concat ";" @@ StringSet.elements last_names)
-      (String.concat ";" @@ StringSet.elements names)
-  in
   if StringSet.cardinal last_names = StringSet.cardinal names then
     names
   else
     let new_names = StringSet.diff names last_names in
-    let _ = Js.log @@ "find new names " ^ (String.concat ";" @@ StringSet.elements new_names) in
     let needed_helpers =
       List.fold_left
         (fun found name ->
@@ -84,7 +76,7 @@ let rec qq_to_expression = function
       ) -> CompileOk (Quoted (Cons (l,Atom (lq,"quote"),Cons (lb,body,Nil ln))))
 
   | Cons
-      ( l
+      ( _l
       , Atom (_, "unquote")
       , Cons
           ( _
@@ -112,10 +104,10 @@ and qq_to_expression_list = function
   | any -> CompileError (location_of any, "Bad list tail " ^ to_string any)
 
 and args_to_expression_list = function
-  | Nil l -> CompileOk []
+  | Nil _l -> CompileOk []
 
   | Cons
-      ( l
+      ( _l
       , first
       , rest
       ) ->
@@ -152,21 +144,21 @@ and compile_bodyform = function
     CompileError (l,"bad let form")
 
   | Cons
-      ( l
+      ( _l
       , Atom (_, "q")
       , body
       ) ->
     CompileOk (Quoted body)
 
   | Cons
-      ( l
+      ( _l
       , Integer (_, "1")
       , body
       ) ->
     CompileOk (Quoted body)
 
   | Cons
-      ( l
+      ( _l
       , Atom (_, "quote")
       , Cons
           ( _
@@ -177,7 +169,7 @@ and compile_bodyform = function
     CompileOk (Quoted body)
 
   | Cons
-      ( l
+      ( _l
       , Atom (_, "qq")
       , Cons
           ( _
@@ -400,5 +392,5 @@ and frontend opts pre_forms =
             (fun h -> StringSet.mem (name_of_helperform h) helper_names)
             helpers
         in
-        Mod (l,args,live_helpers,expr)
+        Mod (l,args,List.rev live_helpers,expr)
     )
