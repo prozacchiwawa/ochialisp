@@ -168,6 +168,17 @@ and rename_in_compileform namemap = function
       , rename_in_bodyform namemap body
       )
 
+and rename_children_compileform = function
+  | Mod (l,arg,helpers,body) ->
+    let local_renamed_helpers = List.map rename_args_helperform helpers in
+    let local_renamed_body = rename_args_bodyform body in
+    Mod
+      ( l
+      , arg
+      , local_renamed_helpers
+      , local_renamed_body
+      )
+
 and rename_args_compileform = function
   | Mod (l,arg,helpers,body) ->
     let new_names = invent_new_names_sexp arg in

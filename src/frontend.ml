@@ -372,7 +372,7 @@ and frontend opts pre_forms =
       | ModAccum (loc, _) -> CompileError (loc, "mod must end on expression")
       | ModFinal m -> CompileOk m
     )
-  |> compMap rename_args_compileform
+  |> compMap rename_children_compileform
   |> compMap
     (function
       | Mod (l,args,helpers,expr) ->
