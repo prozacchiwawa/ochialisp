@@ -49,12 +49,10 @@ let compile_tests : RunCompileTest.t list =
     ; input = "(mod (arg_one) (defun factorial (input) (if (= input 1) 1 (* (factorial (- input 1)) input))) (factorial arg_one))"
     }
 
-(*
-  ; { expected = CompileOk "()"
+  ; { expected = CompileOk "(2 (1 2 2 (4 2 (4 (1 1 2 3) ()))) (4 (1 2 (3 5 (1 4 (1 . 4) (4 (5 5) (4 (2 2 (4 2 (4 (6 5) ()))) (1)))) (1 1)) 1) 1))"
     ; opts = { emptyOpts with assemble = false }
-    ; input = "(mod () (defun makelist (a) (if a (c (q . 4) (f a) (makelist (r a))) (q . ()))) (makelist (q . (1 2 3))))"
+    ; input = "(mod () (defun makelist (a) (if a (c (q . 4) (c (f a) (c (makelist (r a)) (q . ())))) (q . ()))) (makelist (q . (1 2 3))))"
     }
-*)
   ]
 
 let full_tests : RunFullTest.t list =
@@ -73,6 +71,12 @@ let full_tests : RunFullTest.t list =
     ; opts = { emptyOpts with assemble = false }
     ; input = "(mod (arg_one) (defun factorial (input) (if (= input 1) 1 (* (factorial (- input 1)) input))) (factorial arg_one))"
     ; args = "(5)"
+    }
+
+  ; { expected = RunOk "(4 1 (4 2 (4 3 ())))"
+    ; opts = { emptyOpts with assemble = false }
+    ; input = "(mod () (defun makelist (a) (if a (c (q . 4) (c (f a) (c (makelist (r a)) (q . ())))) (q . ()))) (makelist (q . (1 2 3))))"
+    ; args = "()"
     }
   ]
 
