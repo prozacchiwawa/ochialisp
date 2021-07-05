@@ -22,18 +22,17 @@ let compile_tests : RunCompileTest.t list =
     ; opts = { emptyOpts with assemble = false }
     ; input = "(mod () (defmacro testmacro (A) (qq (+ 1 (unquote A)))) (testmacro 3))"
     }
-(*
+
   ; { expected = CompileOk "(2 (3 (1) (1 16 (1 . 1) (1 . 3)) (1 16 (1 . 5) (1 . 8))) 1)"
     ; opts = { emptyOpts with assemble = false ; stdenv = false }
     ; input = "(mod () (defmacro if (A B C) (qq (a (i (unquote A) (com (unquote B)) (com (unquote C))) @))) (if () (+ 1 3) (+ 5 8)))"
     }
-*)
-(*
+
   ; { expected = CompileOk "(2 (3 (1) (1 16 (1 . 1) (1 . 3)) (1 16 (1 . 5) (1 . 8))) 1)"
     ; opts = { emptyOpts with assemble = false }
     ; input = "(mod () (if () (+ 1 3) (+ 5 8)))"
     }
-*)
+
   ; { expected = CompileOk "(2 (1 2 2 (4 2 (4 (1 . 3) ()))) (4 (1 16 5 (1 . 1)) 1))"
     ; opts = { emptyOpts with assemble = false }
     ; input = "(mod () (defun f (a) (+ a 1)) (f 3))"
