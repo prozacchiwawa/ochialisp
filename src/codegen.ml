@@ -242,8 +242,39 @@ and codegen_ opts compiler = function
          }
       )
 
-  | Defun (_loc, _name, _inline, _args, _body) ->
-    CompileError (Srcloc.start opts.filename, "can't process defun forms yet")
+  | Defun (loc, name, _inline, args, body) ->
+    let opts =
+      { opts with
+        compiler = Some compiler
+      ; assemble = false
+      ; stdenv = false
+      }
+    in
+    let tocompile =
+      Cons
+        ( loc
+        , Atom (loc,"mod")
+        , Cons
+            ( loc
+            , args
+            , Cons
+                ( loc
+                , bodyform_to_sexp loc identity body
+                , Nil loc
+                )
+            )
+        )
+    in
+    opts.compileProgram opts tocompile
+    |> compMap
+      (fun code ->
+         let _ =
+           Js.log @@ "defun " ^ to_string tocompile ^ " to " ^ to_string code
+         in
+         { compiler with
+           defuns = StringMap.add name code compiler.defuns
+         }
+      )
 
 and is_defun = function
   | Defun _ -> true
