@@ -64,6 +64,11 @@ let tests =
     ; input = "(mod () (defun f (a) (+ a 1)) (f 3))"
     }
 
+  ; { expected = CompileOk "()"
+    ; opts = { emptyOpts with assemble = false }
+    ; input = "(mod () (defun f (a b) (+ (* a a) b)) (f 3 1))"
+    }
+
 (*
   ; { expected = CompileOk "()"
     ; opts = { emptyOpts with assemble = false }
