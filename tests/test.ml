@@ -4,46 +4,24 @@ open Compiler
 open Frontend
 open Codegen
 open Runtypes
+open Testspec
 
-type test_spec =
-  { expected : string compileResult
-  ; opts : compilerOpts
-  ; input : string
-  }
+let clvm_tests : RunExecTest.t list =
+  [ { expected = RunOk "(\"there\" \"fool\")"
+    ; input = "(a (q 2 4 (c 2 (c 6 ()))) (c (q 13 26729 \"there\" \"fool\") 1))"
+    ; args = "()"
+    }
+  ; { expected = RunOk "(4 1 (4 2 ()))"
+    ; input = "(a (q 2 (q 2 2 (c 2 (c 3 (q)))) (c (q 2 (i 5 (q 4 (q . 4) (c 9 (c (a 2 (c 2 (c 13 (q)))) (q)))) (q 1)) 1) 1)) 1)"
+    ; args = "(1 2)"
+    }
+  ; { expected = RunOk "13"
+    ; input = "(2 (3 (1) (1 16 (1 . 1) (1 . 3)) (1 16 (1 . 5) (1 . 8))) 1)"
+    ; args = "()"
+    }
+  ]
 
-type clvm_spec =
-  { expected : string runResult
-  ; input : string
-  ; args : string
-  }
-
-let emptyOpts =
-  { includeDirs = []
-  ; filename = "test.clvm"
-  ; assemble = true
-  ; stdenv = true
-  ; inDefun = false
-  ; startEnv = None
-  ; compiler = None
-
-  ; readNewFile =
-      (fun _ _ name ->
-         if name == "*macros*" then
-           CompileOk (name, String.concat "\n" Macros.macros)
-         else
-           CompileError (Srcloc.start name, "include unimplemented for name " ^ name)
-      )
-
-  ; compileProgram =
-      (fun opts program ->
-         frontend opts [program]
-         |> compBind (fun m -> codegen opts m)
-      )
-  }
-
-let emptyCompile = { emptyOpts with assemble = true }
-
-let tests =
+let compile_tests : RunCompileTest.t list =
   [ { expected = CompileOk "(16 (1 . 1) (1 . 3))"
     ; opts = { emptyOpts with assemble = false }
     ; input = "(mod () (defmacro testmacro (A) (qq (+ 1 (unquote A)))) (testmacro 3))"
@@ -64,7 +42,7 @@ let tests =
     ; input = "(mod () (defun f (a) (+ a 1)) (f 3))"
     }
 
-  ; { expected = CompileOk "()"
+  ; { expected = CompileOk "(2 (1 2 2 (4 2 (4 (1 . 3) (4 (1 . 1) ())))) (4 (1 16 (18 5 5) 11) 1))"
     ; opts = { emptyOpts with assemble = false }
     ; input = "(mod () (defun f (a b) (+ (* a a) b)) (f 3 1))"
     }
@@ -77,17 +55,10 @@ let tests =
    *)
   ]
 
-let clvm_tests =
-  [ { expected = RunOk "(\"there\" \"fool\")"
-    ; input = "(a (q 2 4 (c 2 (c 6 ()))) (c (q 13 26729 \"there\" \"fool\") 1))"
-    ; args = "()"
-    }
-  ; { expected = RunOk "(4 1 (4 2 ()))"
-    ; input = "(a (q 2 (q 2 2 (c 2 (c 3 (q)))) (c (q 2 (i 5 (q 4 (q . 4) (c 9 (c (a 2 (c 2 (c 13 (q)))) (q)))) (q 1)) 1) 1)) 1)"
-    ; args = "(1 2)"
-    }
-  ; { expected = RunOk "13"
-    ; input = "(2 (3 (1) (1 16 (1 . 1) (1 . 3)) (1 16 (1 . 5) (1 . 8))) 1)"
+let full_tests : RunFullTest.t list =
+  [ { expected = RunOk "10"
+    ; opts = { emptyOpts with assemble = false }
+    ; input = "(mod () (defun f (a b) (+ (* a a) b)) (f 3 1))"
     ; args = "()"
     }
   ]
@@ -95,43 +66,15 @@ let clvm_tests =
 let _ =
   let failed = ref false in
   let _ =
-    clvm_tests
-    |> List.iteri
-      (fun i e ->
-         let cr = parse_and_run "*clvm*" e.input e.args |> runMap Sexp.to_string in
-         if cr <> e.expected then
-           begin
-             failed := true ;
-             Js.log "\nunexpected output:" ;
-             Js.log cr ;
-             Js.log "for input:" ;
-             Js.log @@ e.input ^ " on " ^ e.args ;
-             Js.log "wanted:" ;
-             Js.log e.expected
-           end
-         else
-           Printf.printf "\r%s\r" (string_of_int i)
-      )
+    clvm_tests |> List.iteri (RunExecTest.run failed)
   in
   let _ =
-    tests
-    |> List.iteri
-      (fun i e ->
-         let cr = compile_file e.opts e.input in
-         if cr <> e.expected then
-           begin
-             failed := true ;
-             Js.log "\nunexpected output:" ;
-             Js.log cr ;
-             Js.log "for input:" ;
-             Js.log e.input ;
-             Js.log "wanted:" ;
-             Js.log e.expected
-           end
-         else
-           Printf.printf "\r%s\r" (string_of_int i)
-      )
+    compile_tests |> List.iteri (RunCompileTest.run failed)
   in
+  let _ =
+    full_tests |> List.iteri (RunFullTest.run failed)
+  in
+
   (* Known bug in node: output doesn't always drain when destroying the process *)
   Js.Global.setTimeout
     (fun _ ->

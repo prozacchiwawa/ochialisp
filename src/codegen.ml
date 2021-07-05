@@ -85,7 +85,7 @@ let codegen_to_sexp opts compiler =
       Cons (l,bodyform_to_sexp l identity compiler.final_expr,Nil l)
     ]
 
-let rec get_callable opts compiler _l atom =
+let rec get_callable _opts compiler _l atom =
   match atom with
   | Atom (l,name) ->
     let macro =
