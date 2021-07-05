@@ -91,6 +91,7 @@ type compilerOpts =
   ; compileProgram : compilerOpts -> Srcloc.t sexp -> Srcloc.t sexp compileResult
   ; assemble : bool
   ; stdenv : bool
+  ; startEnv : Srcloc.t sexp option
   }
 
 (* Frontend uses this to accumulate frontend forms *)

@@ -219,6 +219,11 @@ and generate_expr_code (opts : compilerOpts) compiler expr : compiledCode compil
            )
       )
 
+and combine_defun_env old_env new_args =
+  match old_env with
+  | Cons (l,h,_) -> Cons (l,h,new_args)
+  | any -> any
+
 and codegen_ opts compiler = function
   | Defconstant (_loc, _name, _body) ->
     CompileError (Srcloc.start opts.filename, "can't process defconstant forms yet")
@@ -243,11 +248,13 @@ and codegen_ opts compiler = function
       )
 
   | Defun (loc, name, _inline, args, body) ->
+    let _ = Js.log @@ "defun " ^ name ^ " args " ^ to_string args in
     let opts =
       { opts with
         compiler = Some compiler
       ; assemble = false
       ; stdenv = false
+      ; startEnv = Some (combine_defun_env compiler.env args)
       }
     in
     let tocompile =
@@ -287,7 +294,7 @@ and empty_compiler l =
 
   ; defuns = StringMap.empty
 
-  ; env = Nil l
+  ; env = Cons (l, Nil l, Nil l)
 
   ; to_process = []
 
@@ -305,7 +312,12 @@ and start_codegen opts = function
       | Some c -> c
     in
     { use_compiler with
-      env = compute_env_shape l args live_helpers
+      env =
+        begin
+          match opts.startEnv with
+          | Some env -> env
+          | None -> compute_env_shape l args live_helpers
+        end
     ; to_process = helpers
     ; final_expr = expr
     }

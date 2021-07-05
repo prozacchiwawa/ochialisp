@@ -51,6 +51,7 @@ let main args =
          ; filename = infile
          ; assemble = not ap.noAssemble
          ; stdenv = true
+         ; startEnv = None
          ; compiler = None
          ; readNewFile =
              (fun _ _ name ->

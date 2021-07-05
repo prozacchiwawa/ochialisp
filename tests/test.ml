@@ -22,6 +22,7 @@ let emptyOpts =
   ; filename = "test.clvm"
   ; assemble = true
   ; stdenv = true
+  ; startEnv = None
   ; compiler = None
 
   ; readNewFile =
@@ -56,6 +57,12 @@ let tests =
     ; opts = { emptyOpts with assemble = false }
     ; input = "(mod () (if () (+ 1 3) (+ 5 8)))"
     }
+    (*
+  ; { expected = CompileOk "()"
+    ; opts = { emptyOpts with assemble = false }
+    ; input = "(mod () (defun makelist (a) (if a (c (q . 4) (f a) (makelist (r a))) (q . ()))) (makelist (q . (1 2 3))))"
+    }
+       *)
   ]
 
 let clvm_tests =
