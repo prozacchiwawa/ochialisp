@@ -61,6 +61,11 @@ let full_tests : RunFullTest.t list =
     ; input = "(mod () (defun f (a b) (+ (* a a) b)) (f 3 1))"
     ; args = "()"
     }
+  ; { expected = RunOk "13"
+    ; opts = { emptyOpts with assemble = false }
+    ; input = "(mod (c) (defun f (a b) (+ (* a a) b)) (f 3 c))"
+    ; args = "(4)"
+    }
   ]
 
 let _ =
