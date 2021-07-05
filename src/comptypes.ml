@@ -91,6 +91,7 @@ type compilerOpts =
   ; compiler : (Srcloc.t sexp, Srcloc.t sexp) primaryCodegen option
   ; compileProgram : compilerOpts -> Srcloc.t sexp -> Srcloc.t sexp compileResult
   ; assemble : bool
+  ; stdenv : bool
   }
 
 (* Frontend uses this to accumulate frontend forms *)

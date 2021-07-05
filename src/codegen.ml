@@ -142,7 +142,6 @@ and process_macro_call opts compiler l args code =
       )
 
   | RunOk v ->
-    let _ = Js.log @@ Printf.sprintf "compiled macro: %s" (to_string v) in
     Frontend.compile_bodyform v
     |> compBind (fun body -> generate_expr_code opts compiler body)
 
@@ -200,7 +199,11 @@ and generate_expr_code (opts : compilerOpts) compiler expr : compiledCode compil
                match args with
                | Cons (_,body,Nil _) ->
                  let opts =
-                   { opts with compiler = Some compiler ; assemble = false }
+                   { opts with
+                     compiler = Some compiler
+                   ; assemble = false
+                   ; stdenv = false
+                   }
                  in
                  let evalcode = run body compiler.env in
                  opts.compileProgram opts body
@@ -233,7 +236,13 @@ and codegen_ opts compiler = function
       compileform_to_sexp identity identity body
     in
     let _ = Js.log @@ "compile macro " ^ name ^ " with " ^ to_string macroProgram in
-    let opts = { opts with compiler = Some compiler ; assemble = false } in
+    let opts =
+      { opts with
+        compiler = Some compiler
+      ; assemble = false
+      ; stdenv = false
+      }
+    in
     opts.compileProgram opts macroProgram
     |> compMap
       (fun code ->

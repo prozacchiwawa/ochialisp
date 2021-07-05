@@ -52,16 +52,37 @@ let process_pp_form opts = function
 
   | any -> CompileOk [any]
 
-let rec preprocess opts : Srcloc.t sexp -> Srcloc.t sexp list compileResult = function
-  | Cons (_,head,Nil _) ->
+let rec preprocess_ opts : Srcloc.t sexp -> Srcloc.t sexp list compileResult = function
+  | Cons (l,head,Nil nl) ->
     process_pp_form opts head
 
   | Cons (_,head,rest) ->
     process_pp_form opts head
     |> compBind
       (fun lst ->
-         preprocess opts rest
+         preprocess_ opts rest
          |> compMap (fun rs -> List.concat [lst;rs])
       )
 
   | any -> CompileOk [any]
+
+let inject_std_macros body =
+  let l = location_of body in
+  Cons
+    ( l
+    , Cons
+        (l
+        , Atom (l,"include")
+        , Cons (l,QuotedString (l,'\"',"*macros*"), Nil l)
+        )
+    , body
+    )
+
+let preprocess opts cmod =
+  let tocompile =
+    if opts.stdenv then
+      inject_std_macros cmod
+    else
+      cmod
+  in
+  preprocess_ opts tocompile

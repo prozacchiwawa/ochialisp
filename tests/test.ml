@@ -21,12 +21,13 @@ let emptyOpts =
   { includeDirs = []
   ; filename = "test.clvm"
   ; assemble = true
+  ; stdenv = true
   ; compiler = None
 
   ; readNewFile =
       (fun _ _ name ->
          if name == "*macros*" then
-          CompileOk (name, String.concat "\n" Macros.macros)
+           CompileOk (name, String.concat "\n" Macros.macros)
          else
            CompileError (Srcloc.start name, "include unimplemented for name " ^ name)
       )
@@ -45,9 +46,15 @@ let tests =
     ; opts = { emptyOpts with assemble = false }
     ; input = "(mod () (defmacro testmacro (A) (qq (+ 1 (unquote A)))) (testmacro 3))"
     }
-  ; { expected = CompileOk "(16 (1 . 5) (1 . 8))"
+
+  ; { expected = CompileOk "(2 (3 (1) (1 16 (1 . 1) (1 . 3)) (1 16 (1 . 5) (1 . 8))) 1)"
+    ; opts = { emptyOpts with assemble = false ; stdenv = false }
+    ; input = "(mod () (defmacro if (A B C) (qq (a (i (unquote A) (com (unquote B)) (com (unquote C))) @))) (if () (+ 1 3) (+ 5 8)))"
+    }
+
+  ; { expected = CompileOk "(2 (3 (1) (1 16 (1 . 1) (1 . 3)) (1 16 (1 . 5) (1 . 8))) 1)"
     ; opts = { emptyOpts with assemble = false }
-    ; input = "(mod () (defmacro if (A B C) (qq (a (i (unquote A) (com (unquote B)) (com (unquote C))) (q . 1)))) (if () (+ 1 3) (+ 5 8)))"
+    ; input = "(mod () (if () (+ 1 3) (+ 5 8)))"
     }
   ]
 
@@ -77,8 +84,7 @@ let _ =
              Js.log "for input:" ;
              Js.log @@ e.input ^ " on " ^ e.args ;
              Js.log "wanted:" ;
-             Js.log e.expected ;
-             failed := true
+             Js.log e.expected
            end
          else
            Printf.printf "\r%s\r" (string_of_int i)
@@ -97,8 +103,7 @@ let _ =
              Js.log "for input:" ;
              Js.log e.input ;
              Js.log "wanted:" ;
-             Js.log e.expected ;
-             failed := true
+             Js.log e.expected
            end
          else
            Printf.printf "\r%s\r" (string_of_int i)
@@ -115,4 +120,4 @@ let _ =
        else
          Js.log "\nTests PASSED\n"
     )
-    100
+    500

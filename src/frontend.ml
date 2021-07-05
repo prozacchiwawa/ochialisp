@@ -218,6 +218,7 @@ and compile_defmacro opts l name args body =
           )
       )
   in
+  let opts = { opts with stdenv = false } in
   frontend opts [program]
   |> compMap (fun p -> Defmacro (l, name, args, p))
 
@@ -358,7 +359,7 @@ and frontend_start opts pre_forms =
     CompileError
       (l, "one toplevel mod form allowed")
 
-  | hd :: _tl ->
+  | hd :: _ ->
     let loc = location_of hd in
     frontend_start opts
       [ Cons

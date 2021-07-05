@@ -50,6 +50,7 @@ let main args =
          { includeDirs = ap.includeDirs
          ; filename = infile
          ; assemble = not ap.noAssemble
+         ; stdenv = true
          ; compiler = None
          ; readNewFile =
              (fun _ _ name ->
