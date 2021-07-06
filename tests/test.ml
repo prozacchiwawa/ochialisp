@@ -83,6 +83,12 @@ let full_tests : RunFullTest.t list =
     ; input = "(mod (a) (list 1 2))"
     ; args = "()"
     }
+
+  ; { expected = RunOk "(100 81 64 49)"
+    ; opts = { emptyOpts with assemble = false }
+    ; input = "(mod args (defmacro square (input) (qq (* (unquote input) (unquote input)))) (defun sqre_list (my_list) (if my_list (c (square (f my_list)) (sqre_list (r my_list))) my_list)) (sqre_list args))"
+    ; args = "(10 9 8 7)"
+    }
   ]
 
 let _ =
