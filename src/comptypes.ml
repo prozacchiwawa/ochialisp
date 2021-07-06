@@ -79,6 +79,7 @@ type defunCall =
 (* Code generation phase *)
 type ('arg,'body) primaryCodegen =
   { prims : Srcloc.t sexp StringMap.t
+  ; constants : Srcloc.t sexp StringMap.t
   ; macros : Srcloc.t sexp StringMap.t
   ; defuns : defunCall StringMap.t
   ; parentfns : StringSet.t

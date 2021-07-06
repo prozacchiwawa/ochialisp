@@ -12,7 +12,7 @@ let rec choose_path l orig p all context =
       let next = if p mod 2 == 0 then a else b in
       choose_path l orig (p/2) all next
 
-    | any ->
+    | _ ->
       RunError
         (l, "bad path " ^ string_of_int orig ^ " in " ^ to_string all)
 
@@ -171,7 +171,7 @@ let rec run sexp context =
         (fun s ->
            let hasher = Hash.create () in
            let _ = Hash.update hasher s in
-           Integer (l, "0x" ^ Hash.hex hasher)
+           Integer (l, normalize_int (Hash.hex hasher) 16)
         )
     | ( Integer (_,"12")
       , Cons

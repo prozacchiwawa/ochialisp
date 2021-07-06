@@ -56,8 +56,11 @@ let rec create_name_lookup_ l name env = function
       )
 
 let create_name_lookup compiler l name =
-  create_name_lookup_ l name compiler.env compiler.env
-  |> compMap (fun i -> Integer (l,string_of_int i))
+  try
+    CompileOk (StringMap.find name compiler.constants)
+  with _ ->
+    create_name_lookup_ l name compiler.env compiler.env
+    |> compMap (fun i -> Integer (l,string_of_int i))
 
 let lookup_prim compiler l name =
   try
@@ -160,7 +163,7 @@ and generate_args_code opts compiler l : Srcloc.t sexp bodyForm list -> Srcloc.t
            )
       )
 
-and process_defun_call opts _compiler l args lookup =
+and process_defun_call _opts _compiler l args lookup =
   let rec cons_up = function
     | Cons (l,h,r) -> primcons l h (cons_up r)
     | any -> any
@@ -267,8 +270,35 @@ and combine_defun_env old_env new_args =
   | any -> any
 
 and codegen_ opts compiler = function
-  | Defconstant (_loc, _name, _body) ->
-    CompileError (Srcloc.start opts.filename, "can't process defconstant forms yet")
+  | Defconstant (loc, name, body) ->
+    let expandProgram =
+      compileform_to_sexp identity identity (Mod (loc, Nil loc, [], body))
+    in
+    let opts =
+      { opts with
+        compiler = Some compiler
+      }
+    in
+    opts.compileProgram opts expandProgram
+    |> compBind
+      (fun code ->
+         match run code (Nil loc) with
+         | RunOk res -> CompileOk res
+         | r ->
+           CompileError
+             ( loc
+             , Printf.sprintf
+                 "Error evaluating constant: %s"
+                 (Runtypes.run_to_string to_string r)
+             )
+      )
+    |> compMap
+      (fun res ->
+         { compiler with
+           constants =
+             StringMap.add name (primquote loc res) compiler.constants
+         }
+      )
 
   | Defmacro (_loc, name, _args, body) ->
     let macroProgram =
@@ -335,6 +365,8 @@ and is_defun = function
 
 and empty_compiler l =
   { prims = Prims.prims |> StringMapBuilder.go
+
+  ; constants = StringMap.empty
 
   ; macros = StringMap.empty
 

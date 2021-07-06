@@ -29,6 +29,8 @@ type 'loc sexpParseResult
   | PEmit of (('loc sexp) * ('loc sexpParseState))
   | PError of ('loc * string)
 
+type integral = Decimal | Hex | NotIntegral
+
 let matches_integral s =
   let is_hex () = String.length s >= 2 && String.sub s 0 2 == "0x" in
   let is_dec () =
@@ -42,19 +44,22 @@ let matches_integral s =
     in
     !dec
   in
-  is_hex () || is_dec ()
+  if is_hex () then Hex else if is_dec () then Decimal else NotIntegral
 
-let normalize_int v =
-  BigInteger.toString (BigInteger.bigInt (`String v)) ~base:10 ()
+let normalize_int v base =
+  BigInteger.toString
+    (BigInteger.bigIntBaseN (`String v) (`Int base))
+    ~base:10 ()
 
 let make_atom l v =
   let alen = String.length v in
   if alen > 1 && String.get v 0 == '#' then
     Atom (l,String.sub v 1 (alen - 1))
-  else if matches_integral v then
-    Integer (l,normalize_int v)
   else
-    Atom (l,v)
+    match matches_integral v with
+    | Hex -> Integer (l,normalize_int (String.sub v 2 (alen - 2)) 16)
+    | Decimal -> Integer (l,normalize_int v 10)
+    | NotIntegral -> Atom (l,v)
 
 let emit (a : 'loc sexp) (p : 'loc sexpParseState) : 'loc sexpParseResult =
   PEmit (a,p)
@@ -372,4 +377,5 @@ let rec equal a b =
       equal r t && equal s u
     | (Cons (_,_,_), _) -> false
     | (_, Cons (_,_,_)) -> false
+    | (Integer (_,a),Integer (_,b)) -> a == b
     | (a,b) -> encode a == encode b

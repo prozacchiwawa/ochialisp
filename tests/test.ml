@@ -89,6 +89,12 @@ let full_tests : RunFullTest.t list =
     ; input = "(mod args (defmacro square (input) (qq (* (unquote input) (unquote input)))) (defun sqre_list (my_list) (if my_list (c (square (f my_list)) (sqre_list (r my_list))) my_list)) (sqre_list args))"
     ; args = "(10 9 8 7)"
     }
+
+  ; { expected = RunOk "((51 305419896 1000000000))"
+    ; opts = { emptyOpts with assemble = false }
+    ; input = "(mod (PASSWORD_HASH password new_puzhash amount) (defconstant CREATE_COIN 51) (defun check_password (PASSWORD_HASH password new_puzhash amount) (if (= (sha256 password) PASSWORD_HASH) (list (list CREATE_COIN new_puzhash amount)) (x))) (check_password PASSWORD_HASH password new_puzhash amount))"
+    ; args = "(0x2ac6aecf15ac3042db34af4863da46111da7e1bf238fc13da1094f7edc8972a1 \"sha256ftw\" 0x12345678 1000000000)"
+    }
   ]
 
 let _ =

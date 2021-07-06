@@ -194,6 +194,10 @@ and compile_bodyform = function
   | any ->
     CompileOk (Value any)
 
+and compile_defconstant l name body =
+  compile_bodyform body
+  |> compMap (fun bf -> Defconstant (l,name,bf))
+
 and compile_defun l inline name args body =
   compile_bodyform body
   |> compMap (fun bf -> Defun (l, name, inline, args, bf))
@@ -220,15 +224,16 @@ and compile_helperform opts = function
       , Atom (_, "defconstant")
       , Cons
           ( _
-          , Atom (_,_name)
+          , Atom (_,name)
           , Cons
               ( _
-              , _body
+              , body
               , Nil _
               )
           )
       ) ->
-    CompileError (l, "can't yet compile defconstant")
+    compile_defconstant l name body
+    |> compMap (fun a -> Some a)
 
   | Cons
       ( l
