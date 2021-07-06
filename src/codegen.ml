@@ -123,9 +123,7 @@ let rec get_callable _opts compiler _l atom =
 and process_macro_call opts compiler l args code =
   let converted_args = List.map (bodyform_to_sexp l identity) args in
   let args_to_macro = list_to_cons l location_of converted_args in
-  let run_outcome =
-    run code (Cons (l,compiler.env,args_to_macro))
-  in
+  let run_outcome = run code args_to_macro in
   match run_outcome with
   | RunExn (ml,x) ->
     CompileError
@@ -168,23 +166,12 @@ and process_defun_call opts _compiler l args lookup =
     | any -> any
   in
   let env = primcons l (Integer (l,"2")) (cons_up args) in
-  if opts.inDefun then
-    CompileOk
-      (Code
-         ( l
-         , primapply l lookup env
-         )
-      )
-  else
-    CompileOk
-      (Code
-         ( l
-         , primapply l lookup env
-         )
-      )
-
-
-(* (Code (l, Cons (l, Atom (l,"q"), env))) *)
+  CompileOk
+    (Code
+       ( l
+       , primapply l lookup env
+       )
+    )
 
 and get_call_name l = function
   | Value (Atom (l,name)) -> CompileOk (Atom (l,name))
@@ -408,13 +395,16 @@ and finalize_env_ opts c _l env =
 
   | Cons (l,h,r) ->
     finalize_env_ opts c l h
-    |> compBind (fun h -> finalize_env_ opts c l r |> compMap (fun r -> Cons (l,h,r)))
+    |> compBind
+      (fun h ->
+         finalize_env_ opts c l r |> compMap (fun r -> Cons (l,h,r))
+      )
 
   | any -> CompileOk any
 
-and finalize_env opts c _l =
+and finalize_env opts c =
   match c.env with
-  | Cons (l,h,_r) -> finalize_env_ opts c l h
+  | Cons (l,h,_) -> finalize_env_ opts c l h
   | any -> CompileOk any
 
 and codegen opts cmod =
@@ -426,26 +416,34 @@ and codegen opts cmod =
   |> compBind (final_codegen opts)
   |> compBind
     (fun c ->
-       let l = loc_of_compileform cmod in
-       finalize_env opts c l
+       finalize_env opts c
        |> compBind
          (fun final_env ->
             match c.final_code with
             | None ->
               CompileError (Srcloc.start opts.filename, "Failed to generate code")
             | Some (Code (l,code)) ->
-              if opts.inDefun || nilp final_env then
-                CompileOk code
+              if opts.inDefun then
+                let final_code =
+                  (primapply
+                     l
+                     (primquote l code)
+                     (Integer (l,"1"))
+                  )
+                in
+                CompileOk final_code
               else
-                CompileOk
+                let final_code =
                   (primapply
                      l
                      (primquote l code)
                      (primcons
                         l
                         (primquote l final_env)
-                        (Atom (l,"1"))
+                        (Integer (l,"1"))
                      )
                   )
+                in
+                CompileOk final_code
          )
     )

@@ -9,7 +9,7 @@ let main args =
     begin
       let incode = Node.Fs.readFileSync infile `utf8 in
       Printf.printf "%s" @@
-      Clvm.run_to_string to_string @@
+      Runtypes.run_to_string to_string @@
       Clvm.parse_and_run infile incode args
     end
   | _ -> usage ()

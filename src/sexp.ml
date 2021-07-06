@@ -48,21 +48,16 @@ let normalize_int v =
   BigInteger.toString (BigInteger.bigInt (`String v)) ~base:10 ()
 
 let make_atom l v =
-  if matches_integral v then
+  let alen = String.length v in
+  if alen > 1 && String.get v 0 == '#' then
+    Atom (l,String.sub v 1 (alen - 1))
+  else if matches_integral v then
     Integer (l,normalize_int v)
   else
     Atom (l,v)
 
 let emit (a : 'loc sexp) (p : 'loc sexpParseState) : 'loc sexpParseResult =
-  match a with
-  | Atom (l,v) ->
-    let alen = String.length v in
-    if alen > 0 && String.get v 0 == '#' then
-      (* assemble_from_ir: #a == a *)
-      PEmit (Atom (l,String.sub v 1 (alen - 1)),p)
-    else
-      PEmit (make_atom l v,p)
-  | any -> PEmit (any,p)
+  PEmit (a,p)
 
 let error l t : 'loc sexpParseResult = PError (l, t)
 
@@ -131,7 +126,7 @@ let rec parse_sexp_step (ext : 'loc -> 'loc -> 'loc) (loc : 'loc) : 'loc sexpPar
   | Bareword (pl, a) ->
     fun ch ->
       if isspace ch then
-        emit (Atom (pl,a)) Empty
+        emit (make_atom pl a) Empty
       else
         resume @@ Bareword (ext pl loc, a ^ (String.make 1 ch))
   | QuotedText (pl, term, t) ->
@@ -167,15 +162,7 @@ let rec parse_sexp_step (ext : 'loc -> 'loc -> 'loc) (loc : 'loc) : 'loc sexpPar
         | (')', Empty) ->
           emit (list_content (Nil loc)) Empty
         | (')', Bareword (l,t)) ->
-          let tlen = String.length t in
-          let parsed_atom =
-            if matches_integral t then
-              Integer (l,normalize_int t)
-            else if tlen > 0 && String.get t 0 == '#' then
-              Atom (l,String.sub t 1 (tlen - 1))
-            else
-              make_atom l t
-          in
+          let parsed_atom = make_atom l t in
           let finished_list = make_cons ext parsed_atom (Nil loc) in
           emit (list_content finished_list) Empty
         | (ch, _) ->

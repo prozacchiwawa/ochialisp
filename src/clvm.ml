@@ -3,13 +3,18 @@ open Binascii
 open Arith
 open Runtypes
 
-let rec path_to_expression l p context =
+let rec choose_path l orig p all context =
   if p == 1 then
-    context
-  else if p mod 2 == 0 then
-    path_to_expression l (p/2) (Cons (l, Integer (l,"5"), (Cons (l, context, Nil l))))
+    RunOk context
   else
-    path_to_expression l (p/2) (Cons (l, Integer (l,"6"), (Cons (l, context, Nil l))))
+    match context with
+    | Cons (l,a,b) ->
+      let next = if p mod 2 == 0 then a else b in
+      choose_path l orig (p/2) all next
+
+    | any ->
+      RunError
+        (l, "bad path " ^ string_of_int orig ^ " in " ^ to_string all)
 
 let runMap (f : 'a -> 'b) : 'a runResult -> 'b runResult = function
   | RunOk e -> RunOk (f e)
@@ -395,26 +400,28 @@ let rec run sexp context =
       RunError (l, "bad arguments to op " ^ op)
     | (any, args) -> RunError (l, "bad op " ^ to_string any ^ " with args " ^ to_string args)
   in
-  match sexp with
-  | Integer (l,v) ->
-    (* An integer picks a value from the context *)
-    run (path_to_expression l (intval v) (Cons (l,Integer (l,"1"),context))) context
-  | QuotedString (_,_,_) ->
-    RunOk sexp
-  | Atom (l,v) ->
-    (* Atoms are integers in this context *)
-    run (Integer (l,encode_string_to_bigint v)) context
-  | Nil l -> RunOk (Nil l)
-  | Cons (l,a,b) ->
-    translate_head a
-    |> runBind
-      (fun head ->
-         match head with
-         | Integer (_,"1") -> RunOk b
-         | _ ->
-           eval_args b
-           |> runBind (apply_op l head)
-      )
+  let result =
+    match sexp with
+    | Integer (l,v) ->
+      (* An integer picks a value from the context *)
+      choose_path l (intval v) (intval v) context context
+    | QuotedString (_,_,_) ->
+      RunOk sexp
+    | Atom (l,v) ->
+      run (Integer (l,encode_string_to_bigint v)) context
+    | Nil l -> RunOk (Nil l)
+    | Cons (l,a,b) ->
+      translate_head a
+      |> runBind
+        (fun head ->
+           match head with
+           | Integer (_,"1") -> RunOk b
+           | _ ->
+             eval_args b
+             |> runBind (apply_op l head)
+        )
+  in
+  result
 
 let parse_and_run file content args =
   let parse_result =
@@ -446,11 +453,3 @@ let parse_and_run file content args =
     RunError (l,m)
   | (Sexp.Failure (l,m), _) ->
     RunError (l,m)
-
-let run_to_string (cvt : 'a -> string) (r : 'a runResult) =
-  match r with
-  | RunOk v -> Printf.sprintf "%s" (cvt v)
-  | RunExn (l,e) ->
-    Printf.sprintf "%s: throw(x) %s\n" (Srcloc.toString l) (to_string e)
-  | RunError (l,e) ->
-    Printf.sprintf "%s: %s\n" (Srcloc.toString l) e
