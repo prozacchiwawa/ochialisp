@@ -14,13 +14,13 @@ make test
 # Run
 
 ```
-./compile -o some.hex some.clvm
+./compile -o some.hex some.clisp
 ```
 
 or
 
 ```
-./compile -S -o some.hex some.clvm
+./compile -S -o some.clvm some.clisp
 ```
 
 Some tests are cribbed from the chialisp website and other info about
