@@ -11,6 +11,18 @@ npm run build
 make test
 ```
 
+# Run
+
+```
+./compile -o some.hex some.clvm
+```
+
+or
+
+```
+./compile -S -o some.hex some.clvm
+```
+
 Some tests are cribbed from the chialisp website and other info about
 chialisp.  This isn't the authentic experience I hoped it'd be.  It
 doesn't do any optimization just yet and takes a different approach

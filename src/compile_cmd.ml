@@ -30,6 +30,20 @@ let process_arg ap arg =
     (* Will be reversed *)
     { ap with inputFiles = arg :: ap.inputFiles }
 
+let rec tryLocateFile oldname includeDirs name =
+  match includeDirs with
+  | [] ->
+    CompileError
+      ( Srcloc.start oldname
+      , "Could not find file " ^ name ^ " in include dirs"
+      )
+  | hd :: tl ->
+    try
+      let find_path = Node.Path.join @@ [| hd ; name |] in
+      CompileOk (find_path, Node.Fs.readFileSync find_path `utf8)
+    with _ ->
+      tryLocateFile oldname tl name
+
 let main args =
   let ap =
     { includeDirs = []
@@ -55,12 +69,11 @@ let main args =
          ; startEnv = None
          ; compiler = None
          ; readNewFile =
-             (fun _ _ name ->
+             (fun opts oldname name ->
                 if name == "*macros*" then
                   CompileOk (name, String.concat "\n" Macros.macros)
                 else
-                  CompileError
-                    (Srcloc.start infile, "include unimplemented for name " ^ name)
+                  tryLocateFile oldname opts.includeDirs name
              )
 
          ; compileProgram =
@@ -78,7 +91,7 @@ let main args =
          else
            Node.Fs.writeFileSync ap.output output `utf8
        | CompileError (srcloc, err) ->
-         Printf.printf "%s(%s): %s\n" infile (Srcloc.toString srcloc) err
+         Printf.printf "%s: %s\n" (Srcloc.toString srcloc) err
     )
     (List.rev ap.inputFiles)
 
