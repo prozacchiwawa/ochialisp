@@ -304,7 +304,9 @@ let cons_snd = function
 
 let encode_hex_digit_list bi =
   let encoded = BigInteger.toString bi ~base:16 () in
-  let elen = BigInteger.bigInt (`Int ((String.length encoded) / 2)) in
+  let enclen = String.length encoded in
+  let padded = if enclen mod 2 == 0 then encoded else "0"^encoded in
+  let elen = BigInteger.bigInt (`Int ((String.length padded) / 2)) in
   let len40 = BigInteger.bigInt (`Int 0x40) in
   let len2000 = BigInteger.bigInt (`Int 0x2000) in
   let len1000000 = BigInteger.bigInt (`Int 0x1000000) in
@@ -317,18 +319,18 @@ let encode_hex_digit_list bi =
     else if BigInteger.lesser elen (`BigInt len1000000) then
       BigInteger.bigInt (`Int 0xe0000000)
     else if BigInteger.lesser elen (`BigInt len80000000) then
-      BigInteger.bigInt (`String "0xf0000000")
+      BigInteger.bigIntBaseN (`String "0xf0000000") (`Int 16)
     else
-      BigInteger.bigInt (`String "0xf80000000000")
+      BigInteger.bigIntBaseN (`String "0xf80000000000") (`Int 16)
   in
-  BigInteger.toString (BigInteger.plus elen (`BigInt lenOr)) ~base:16 ()
+  (BigInteger.toString (BigInteger.plus elen (`BigInt lenOr)) ~base:16 ()) ^ padded
 
 let encode_integer_value v =
-  let bi = BigInteger.bigInt (`String v) in
+  let bi = BigInteger.bigIntBaseN (`String v) (`Int 16) in
   if BigInteger.greater bi (`Int 0x7f) then
     encode_hex_digit_list bi
   else
-    BigInteger.toString bi ~base:16 ()
+    Printf.sprintf "%02x" (BigInteger.toJSNumber bi)
 
 let encode_string_to_bigint v =
   let enc_array =
@@ -348,9 +350,9 @@ let rec encode : 'a sexp -> string = function
   | Cons (_,a,b) -> "ff" ^ (encode a) ^ (encode b)
   | Integer (_,v) -> encode_integer_value v
   | Atom (_,v) ->
-    encode_integer_value @@ "0x" ^ encode_string_to_bigint v
+    encode_integer_value @@ encode_string_to_bigint v
   | QuotedString (_,_,v) ->
-    encode_integer_value @@ "0x" ^ encode_string_to_bigint v
+    encode_integer_value @@ encode_string_to_bigint v
 
 let intval v =
   BigInteger.toJSNumber (BigInteger.bigInt (`String v))
@@ -361,9 +363,9 @@ let sexp_to_bigint = function
   | Integer (_,v) ->
     Some (BigInteger.bigInt (`String v))
   | Atom (_,v) ->
-    Some (BigInteger.bigInt (`String ("0x" ^ encode_string_to_bigint v)))
+    Some (BigInteger.bigIntBaseN (`String (encode_string_to_bigint v)) (`Int 16))
   | QuotedString (_,_,v) ->
-    Some (BigInteger.bigInt (`String ("0x" ^ encode_string_to_bigint v)))
+    Some (BigInteger.bigIntBaseN (`String (encode_string_to_bigint v)) (`Int 16))
   | _ -> None
 
 let rec equal a b =

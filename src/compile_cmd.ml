@@ -73,7 +73,10 @@ let main args =
        let result = Compiler.compile_file opts input in
        match result with
        | CompileOk output ->
-         Node.Fs.writeFileSync infile output `utf8
+         if ap.output == "" then
+           Printf.printf "%s: %s\n" infile output
+         else
+           Node.Fs.writeFileSync ap.output output `utf8
        | CompileError (srcloc, err) ->
          Printf.printf "%s(%s): %s\n" infile (Srcloc.toString srcloc) err
     )
