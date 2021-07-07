@@ -6,6 +6,10 @@
     "build": "bsb -make-world",
     "watch": "bsb -make-world -w"
   },
+  "bin": {
+    "compile": "./lib/js/src/compile_cmd.js",
+    "clvm": "./lib/js/src/clvm_cmd.js"
+  },
   "keywords": [
     "BuckleScript"
   ],
