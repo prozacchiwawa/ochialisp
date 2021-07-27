@@ -1,0 +1,77 @@
+rescript = 1
+g_finger := /home/arty/dev/chia/ochialisp/node_modules/@pckilgore/bs-biginteger/lib/ocaml/install.stamp
+rule ast
+  command = /home/arty/dev/chia/ochialisp/node_modules/bs-platform/linux/bsc.exe  -bs-v 9.0.2  -absname -bs-ast -o $out $i
+o tests/test.ast : ast ../../tests/test.ml
+rule deps
+  command = /home/arty/dev/chia/ochialisp/node_modules/bs-platform/linux/bsb_helper.exe -hash 22f7ed6eb5cfcd378f6772a9d6eb3408 $in
+  restat = 1
+o tests/test.d : deps tests/test.ast
+rule mij
+  command = /home/arty/dev/chia/ochialisp/node_modules/bs-platform/linux/bsc.exe -I src -I tests -I /home/arty/dev/chia/ochialisp/node_modules/@pckilgore/bs-biginteger/lib/ocaml   -bs-package-name chialisp-online -bs-package-output commonjs:lib/js/$in_d:.js -bs-v $g_finger $i
+  dyndep = 1
+  restat = 1
+o tests/test.cmj tests/test.cmi ../js/tests/test.js : mij tests/test.ast
+o tests/testspec.ast : ast ../../tests/testspec.ml
+o tests/testspec.d : deps tests/testspec.ast
+o tests/testspec.cmj tests/testspec.cmi ../js/tests/testspec.js : mij tests/testspec.ast
+o src/clvm.ast : ast ../../src/clvm.ml
+o src/clvm.d : deps src/clvm.ast
+o src/clvm.cmj src/clvm.cmi ../js/src/clvm.js : mij src/clvm.ast
+o src/hash.ast : ast ../../src/hash.ml
+o src/hash.d : deps src/hash.ast
+o src/hash.cmj src/hash.cmi ../js/src/hash.js : mij src/hash.ast
+o src/host.ast : ast ../../src/host.ml
+o src/host.d : deps src/host.ast
+o src/host.cmj src/host.cmi ../js/src/host.js : mij src/host.ast
+o src/sexp.ast : ast ../../src/sexp.ml
+o src/sexp.d : deps src/sexp.ast
+o src/sexp.cmj src/sexp.cmi ../js/src/sexp.js : mij src/sexp.ast
+o src/arith.ast : ast ../../src/arith.ml
+o src/arith.d : deps src/arith.ast
+o src/arith.cmj src/arith.cmi ../js/src/arith.js : mij src/arith.ast
+o src/prims.ast : ast ../../src/prims.ml
+o src/prims.d : deps src/prims.ast
+o src/prims.cmj src/prims.cmi ../js/src/prims.js : mij src/prims.ast
+o src/gensym.ast : ast ../../src/gensym.ml
+o src/gensym.d : deps src/gensym.ast
+o src/gensym.cmj src/gensym.cmi ../js/src/gensym.js : mij src/gensym.ast
+o src/macros.ast : ast ../../src/macros.ml
+o src/macros.d : deps src/macros.ast
+o src/macros.cmj src/macros.cmi ../js/src/macros.js : mij src/macros.ast
+o src/option.ast : ast ../../src/option.ml
+o src/option.d : deps src/option.ast
+o src/option.cmj src/option.cmi ../js/src/option.js : mij src/option.ast
+o src/rename.ast : ast ../../src/rename.ml
+o src/rename.d : deps src/rename.ast
+o src/rename.cmj src/rename.cmi ../js/src/rename.js : mij src/rename.ast
+o src/srcloc.ast : ast ../../src/srcloc.ml
+o src/srcloc.d : deps src/srcloc.ast
+o src/srcloc.cmj src/srcloc.cmi ../js/src/srcloc.js : mij src/srcloc.ast
+o src/codegen.ast : ast ../../src/codegen.ml
+o src/codegen.d : deps src/codegen.ast
+o src/codegen.cmj src/codegen.cmi ../js/src/codegen.js : mij src/codegen.ast
+o src/binascii.ast : ast ../../src/binascii.ml
+o src/binascii.d : deps src/binascii.ast
+o src/binascii.cmj src/binascii.cmi ../js/src/binascii.js : mij src/binascii.ast
+o src/clvm_cmd.ast : ast ../../src/clvm_cmd.ml
+o src/clvm_cmd.d : deps src/clvm_cmd.ast
+o src/clvm_cmd.cmj src/clvm_cmd.cmi ../js/src/clvm_cmd.js : mij src/clvm_cmd.ast
+o src/compiler.ast : ast ../../src/compiler.ml
+o src/compiler.d : deps src/compiler.ast
+o src/compiler.cmj src/compiler.cmi ../js/src/compiler.js : mij src/compiler.ast
+o src/frontend.ast : ast ../../src/frontend.ml
+o src/frontend.d : deps src/frontend.ast
+o src/frontend.cmj src/frontend.cmi ../js/src/frontend.js : mij src/frontend.ast
+o src/runtypes.ast : ast ../../src/runtypes.ml
+o src/runtypes.d : deps src/runtypes.ast
+o src/runtypes.cmj src/runtypes.cmi ../js/src/runtypes.js : mij src/runtypes.ast
+o src/comptypes.ast : ast ../../src/comptypes.ml
+o src/comptypes.d : deps src/comptypes.ast
+o src/comptypes.cmj src/comptypes.cmi ../js/src/comptypes.js : mij src/comptypes.ast
+o src/compile_cmd.ast : ast ../../src/compile_cmd.ml
+o src/compile_cmd.d : deps src/compile_cmd.ast
+o src/compile_cmd.cmj src/compile_cmd.cmi ../js/src/compile_cmd.js : mij src/compile_cmd.ast
+o src/preprocessor.ast : ast ../../src/preprocessor.ml
+o src/preprocessor.d : deps src/preprocessor.ast
+o src/preprocessor.cmj src/preprocessor.cmi ../js/src/preprocessor.js : mij src/preprocessor.ast
