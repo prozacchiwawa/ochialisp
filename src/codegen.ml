@@ -322,8 +322,7 @@ and codegen_ opts compiler = function
   | Defun (loc, name, _inline, args, body) ->
     let opts =
       { opts with
-        compiler =
-          Some { compiler with parentfns = StringSet.add name compiler.parentfns }
+        compiler = Some compiler
       ; inDefun = true
       ; assemble = false
       ; stdenv = false
@@ -413,17 +412,17 @@ and final_codegen (opts : compilerOpts) (compiler : (Srcloc.t sexp, Srcloc.t sex
 and finalize_env_ opts c _l env =
   match env with
   | Atom (l,v) ->
-    (* Parentfns are functions in progress in the parent *)
-    if StringSet.mem v c.parentfns then
-      CompileOk (Nil l)
-    else
-      begin
-        try
-          CompileOk (StringMap.find v c.defuns).code
-        with _ ->
+    begin
+      try
+        CompileOk (StringMap.find v c.defuns).code
+      with _ ->
+        (* Parentfns are functions in progress in the parent *)
+        if StringSet.mem v c.parentfns then
+          CompileOk (Nil l)
+        else
           CompileError
             (l, "A defun was referenced in the defun env but not found " ^ v)
-      end
+    end
 
   | Cons (l,h,r) ->
     finalize_env_ opts c l h
@@ -439,13 +438,26 @@ and finalize_env opts c =
   | Cons (l,h,_) -> finalize_env_ opts c l h
   | any -> CompileOk any
 
-and codegen opts cmod =
-  let compiler = start_codegen opts cmod in
+and dummy_functions compiler =
   List.fold_left
-    (fun c f -> compBind (fun comp -> codegen_ opts comp f) c)
+    (fun c -> function
+       | Defconstant _ -> c
+       | Defmacro _ -> c
+       | Defun (_,name,_,_,_) ->
+         { c with parentfns = StringSet.add name c.parentfns }
+    )
+    compiler
+    compiler.to_process
+
+and codegen opts cmod =
+  let compiler =
+    start_codegen opts cmod
+    |> dummy_functions
+  in
+  List.fold_left
+    (fun c f -> c |> compBind (fun comp -> codegen_ opts comp f))
     (CompileOk compiler)
     compiler.to_process
-  |> compBind (final_codegen opts)
   |> compBind
     (fun c ->
        finalize_env opts c

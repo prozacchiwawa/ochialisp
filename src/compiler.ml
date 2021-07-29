@@ -15,8 +15,7 @@ let compile_file opts content : string compileResult =
   | Sexp.Failure (loc, err) -> CompileError (loc, err)
   | Sexp.Success pre_forms ->
     frontend opts pre_forms
-    |> compBind
-      (fun fe -> codegen opts fe)
+    |> compBind (codegen opts)
     |> compMap
       (fun result ->
         if opts.assemble then
