@@ -306,7 +306,7 @@ let rec run sexp context =
               , Nil _
               )
           )
-      ) -> do_arith l shl a b
+      ) -> do_arith l ash a b
 
     | ( Integer (_,"23")
       , Cons
@@ -318,7 +318,7 @@ let rec run sexp context =
               , Nil _
               )
           )
-      ) -> do_arith l shr a b
+      ) -> do_arith l lsh a b
 
     | ( Integer (_,"24")
       , Cons

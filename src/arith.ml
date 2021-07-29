@@ -35,11 +35,11 @@ let do_greater a b =
 
 let do_divmod l _a _b = RunError (l, "not implemented")
 
-let shl n v =
+let ash v n =
   BigInteger.shiftLeft v (BigInteger.toJSNumber n)
 
-let shr n v =
-  BigInteger.shiftRight v (BigInteger.toJSNumber n)
+let lsh v n =
+  BigInteger.shiftLeft v (BigInteger.toJSNumber n)
 
 let logand a b = BigInteger.and_ a (`BigInt b)
 
