@@ -41,8 +41,8 @@ let shl n v =
 let shr n v =
   BigInteger.shiftRight v (BigInteger.toJSNumber n)
 
-let logand _a _b = raise Not_found
+let logand a b = BigInteger.and_ a (`BigInt b)
 
-let logior _a _b = raise Not_found
+let logior a b = BigInteger.or_ a (`BigInt b)
 
-let logxor _a _b = raise Not_found
+let logxor a b = BigInteger.xor a (`BigInt b)
