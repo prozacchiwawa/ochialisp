@@ -458,6 +458,7 @@ and codegen opts cmod =
     (fun c f -> c |> compBind (fun comp -> codegen_ opts comp f))
     (CompileOk compiler)
     compiler.to_process
+  |> compBind (final_codegen opts)
   |> compBind
     (fun c ->
        finalize_env opts c
