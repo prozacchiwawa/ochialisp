@@ -28,3 +28,4 @@ lib/bs
 lib
 static/index.js
 static/brython.js
+.ninja_log
