@@ -183,7 +183,8 @@ and get_call_name l = function
 
 and generate_expr_code (opts : compilerOpts) compiler expr : compiledCode compileResult =
   match expr with
-  | Let (l,_bindings,_expr) -> CompileError (l, "can't yet do let")
+  | Let (l,bindings,expr) ->
+    CompileError (l, "can't yet do let")
   | Quoted q ->
     let l = location_of q in
     CompileOk (Code (l, primquote l q))

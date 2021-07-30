@@ -15,6 +15,10 @@ let clvm_tests : RunExecTest.t list =
     ; input = "(2 (3 (1) (1 16 (1 . 1) (1 . 3)) (1 16 (1 . 5) (1 . 8))) 1)"
     ; args = "()"
     }
+  ; { expected = RunOk "(30000 . 3392)"
+    ; input = "(divmod (1 . 300000003392) (1 . 10000000))"
+    ; args = "()"
+    }
   ]
 
 let compile_tests : RunCompileTest.t list =
