@@ -33,7 +33,22 @@ let do_greater a b =
   else
     BigInteger.bigInt (`Int 0)
 
-let do_divmod l _a _b = RunError (l, "not implemented")
+let do_divmod l a b =
+  let converted_args =
+    sexp_to_bigint a
+    |> Option.bind
+      (fun a ->
+         sexp_to_bigint b
+         |> Option.map (fun b -> (a,b))
+      )
+  in
+  match converted_args with
+  | None ->
+    RunError
+      (l, "bad argument conversion for " ^ to_string a ^ " and " ^ to_string b)
+  | Some (a,b) ->
+    let dr = BigInteger.divmod a (`BigInt b) in
+    RunOk (Sexp.Cons (l, Sexp.Integer (l, BigInteger.toString dr.quotient ()), Sexp.Integer (l, BigInteger.toString dr.remainder ())))
 
 let ash v n =
   BigInteger.shiftLeft v (BigInteger.toJSNumber n)
