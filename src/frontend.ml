@@ -120,21 +120,37 @@ and args_to_expression_list = function
 
   | any -> CompileError (location_of any, "Bad list tail " ^ to_string any)
 
+and make_let_bindings = function
+  | Nil _ -> CompileOk []
+  | Cons (_, Cons (_, Atom (l, name), Cons (_, expr, Nil _)), tl) ->
+    compile_bodyform expr
+    |> compBind
+      (fun body ->
+         make_let_bindings tl
+         |> compMap (fun rest -> (Binding (l, name, body)) :: rest)
+      )
+  | any -> CompileError (location_of any, "Bad binding tail " ^ to_string any)
+
 and compile_bodyform = function
   | Cons
       ( l
       , Atom ( _, "let")
       , Cons
           ( _
-          , _bindings
+          , bindings
           , Cons
               ( _
-              , _body
+              , body
               , Nil _
               )
           )
       ) ->
-    CompileError (l,"can't yet compile let")
+    make_let_bindings bindings
+    |> compBind
+      (fun bindings ->
+         compile_bodyform body
+         |> compMap (fun body -> Let (l, bindings, body))
+      )
 
   | Cons
       ( l

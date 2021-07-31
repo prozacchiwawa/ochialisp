@@ -8,6 +8,23 @@ open Clvm
    - car is the compiled code and
    - cdr is the argument from the mod definition
 
+   Every let adds arguments, and since we model each function level target
+   as a mod () in the end, we can do the same with let bindings, letting
+   each group of bindings:
+
+       (mod args
+         (let
+           ((x (+ a 1))
+            (y (+ b 1)))
+
+           (+ x y)))
+
+   Translate to:
+
+       (mod (a b)
+         (defun let_$1 ((a b) x y) (+ x y))
+         (let_$1 (r @) (+ a 1) (+ b 1))
+         )
 *)
 let compute_code_shape l helpers =
   let helper_atom h = Atom (loc_of_helperform h, name_of_helperform h) in
@@ -184,7 +201,9 @@ and get_call_name l = function
 and generate_expr_code (opts : compilerOpts) compiler expr : compiledCode compileResult =
   match expr with
   | Let (l,bindings,expr) ->
-    CompileError (l, "can't yet do let")
+    (* Depends on a defun having been desugared from this let and the let
+       expressing rewritten. *)
+    generate_expr_code opts compiler expr
   | Quoted q ->
     let l = location_of q in
     CompileOk (Code (l, primquote l q))
@@ -383,14 +402,47 @@ and empty_compiler l =
   ; final_code = None
   }
 
+and generate_let_defun compiler l name bindings body =
+  let args =
+    match compiler.env with
+    | Cons (l, _, fnargs) -> fnargs
+    | any -> Sexp.Nil (location_of any)
+  in
+  let new_arguments =
+    bindings
+    |> List.map
+      (function
+        | Binding (l, name, body) -> Atom (l, name)
+      )
+  in
+  let inner_function_args =
+    Cons (l, args, list_to_cons l location_of new_arguments)
+  in
+  Defun (l, name, true, inner_function_args, body)
+
+and generate_let_args l = function
+  | [] -> []
+  | (Binding (l,_,body) :: tl) -> body :: generate_let_args l tl
+
+and hoist_body_let_binding compiler = function
+  | Let (l, bindings, body) ->
+    let defun_name = Gensym.gensym "letbinding" in
+    let generated_defun = generate_let_defun compiler l defun_name bindings body in
+    let let_args = generate_let_args l bindings in
+    let pass_env = Call (l, [Value (Atom (l,"r")); Value (Atom (l,"@"))]) in
+    ([generated_defun], Call (l, (Value (Atom (l, defun_name))) :: pass_env :: let_args))
+  | any -> ([], any)
+
 and start_codegen opts = function
   | Mod (l,args,helpers,expr) ->
-    let live_helpers = List.filter is_defun helpers in
     let use_compiler =
       match opts.compiler with
       | None -> empty_compiler l
       | Some c -> c
     in
+    let (new_helpers, expr) = hoist_body_let_binding use_compiler expr in
+    let let_helpers_with_expr = List.concat [new_helpers; helpers] in
+    let live_helpers = List.filter is_defun let_helpers_with_expr in
     { use_compiler with
       env =
         begin
@@ -398,7 +450,7 @@ and start_codegen opts = function
           | Some env -> env
           | None -> compute_env_shape l args live_helpers
         end
-    ; to_process = helpers
+    ; to_process = live_helpers
     ; final_expr = expr
     }
 
