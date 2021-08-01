@@ -1,0 +1,1 @@
+{ "dirs" : [ "tests" , "src" ] , "pkgs" : [ [ "@pckilgore/bs-biginteger" , "/home/arty/dev/chia/ochialisp/node_modules/@pckilgore/bs-biginteger" ] ] , "generated" : [] }

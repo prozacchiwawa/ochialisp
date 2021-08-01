@@ -1,0 +1,1 @@
+src/compile_cmd.cmj : src/codegen.cmj src/codegen.cmi src/compiler.cmj src/compiler.cmi src/comptypes.cmj src/comptypes.cmi src/frontend.cmj src/frontend.cmi src/macros.cmj src/macros.cmi src/srcloc.cmj src/srcloc.cmi
