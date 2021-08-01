@@ -34,12 +34,17 @@ type integral = Decimal | Hex | NotIntegral
 let matches_integral s =
   let is_hex () = String.length s >= 2 && String.sub s 0 2 == "0x" in
   let is_dec () =
+    let first = ref true in
     let dec = ref true in
     let _ =
       for i = 0 to ((String.length s) - 1) do
-        match String.get s i with
-        | '0'..'9' -> ()
-        | _ -> dec := false
+        let _ =
+          match String.get s i with
+          | '0'..'9' -> ()
+          | '-' -> if !first then () else dec := false
+          | _ -> dec := false
+        in
+        first := false
       done
     in
     !dec
