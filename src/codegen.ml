@@ -446,7 +446,7 @@ and process_helper_let_bindings compiler = function
     (Defun (l, name, inline, args, hoisted_body)) ::
     process_helper_let_bindings subcompiler new_args
 
-  | any :: tl -> process_helper_let_bindings compiler tl
+  | any :: tl -> any :: process_helper_let_bindings compiler tl
 
   | [] -> []
 
@@ -469,7 +469,7 @@ and start_codegen opts = function
           | Some env -> env
           | None -> compute_env_shape l args live_helpers
         end
-    ; to_process = live_helpers
+    ; to_process = let_helpers_with_expr
     ; final_expr = expr
     }
 
@@ -526,7 +526,6 @@ and codegen opts cmod =
     start_codegen opts cmod
     |> dummy_functions
   in
-  let _ = Js.log @@ Sexp.to_string @@ codegen_to_sexp opts compiler in
   List.fold_left
     (fun c f -> c |> compBind (fun comp -> codegen_ opts comp f))
     (CompileOk compiler)
@@ -542,7 +541,6 @@ and codegen opts cmod =
               CompileError (Srcloc.start opts.filename, "Failed to generate code")
             | Some (Code (l,code)) ->
               if opts.inDefun then
-                let _ = Js.log @@ "defun env " ^ Sexp.to_string c.env ^ " code " ^ Sexp.to_string code in
                 let final_code =
                   (primapply
                      l
