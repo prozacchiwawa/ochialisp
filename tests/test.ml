@@ -99,6 +99,24 @@ let full_tests : RunFullTest.t list =
     ; input = "(mod (PASSWORD_HASH password new_puzhash amount) (defconstant CREATE_COIN 51) (defun check_password (PASSWORD_HASH password new_puzhash amount) (if (= (sha256 password) PASSWORD_HASH) (list (list CREATE_COIN new_puzhash amount)) (x))) (check_password PASSWORD_HASH password new_puzhash amount))"
     ; args = "(0x2ac6aecf15ac3042db34af4863da46111da7e1bf238fc13da1094f7edc8972a1 \"sha256ftw\" 0x12345678 1000000000)"
     }
+
+  ; { expected = RunOk "15"
+    ; opts = { emptyOpts with assemble = false }
+    ; input = "(mod (a b) (let ((x (+ a 1)) (y (+ b 1))) (+ x y)))"
+    ; args = "(5 8)"
+    }
+
+  ; { expected = RunOk "1"
+    ; opts = { emptyOpts with assemble = false }
+    ; input = "(mod (a) (defun f (i) (let ((x (not i)) (y (* i 2))) (+ x y))) (f a))"
+    ; args = "(0)"
+    }
+
+  ; { expected = RunOk "6"
+    ; opts = { emptyOpts with assemble = false }
+    ; input = "(mod (a) (defun f (i) (let ((x (not i)) (y (* i 2))) (+ x y))) (f a))"
+    ; args = "(3)"
+    }
   ]
 
 let _ =
