@@ -431,7 +431,24 @@ and hoist_body_let_binding compiler = function
     let let_args = generate_let_args l bindings in
     let pass_env = Call (l, [Value (Atom (l,"r")); Value (Atom (l,"@"))]) in
     ([generated_defun], Call (l, (Value (Atom (l, defun_name))) :: pass_env :: let_args))
+
   | any -> ([], any)
+
+and process_helper_let_bindings compiler = function
+  | Defun (l, name, inline, args, body) :: tl ->
+    let (hoisted_helpers, hoisted_body) =
+      hoist_body_let_binding compiler body
+    in
+    let new_args = List.concat [hoisted_helpers ; tl] in
+    let subcompiler =
+      { compiler with env = combine_defun_env compiler.env args }
+    in
+    (Defun (l, name, inline, args, hoisted_body)) ::
+    process_helper_let_bindings subcompiler new_args
+
+  | any :: tl -> process_helper_let_bindings compiler tl
+
+  | [] -> []
 
 and start_codegen opts = function
   | Mod (l,args,helpers,expr) ->
@@ -441,7 +458,9 @@ and start_codegen opts = function
       | Some c -> c
     in
     let (new_helpers, expr) = hoist_body_let_binding use_compiler expr in
-    let let_helpers_with_expr = List.concat [new_helpers; helpers] in
+    let let_helpers_with_expr =
+      process_helper_let_bindings use_compiler @@ List.concat [new_helpers; helpers]
+    in
     let live_helpers = List.filter is_defun let_helpers_with_expr in
     { use_compiler with
       env =
@@ -507,6 +526,7 @@ and codegen opts cmod =
     start_codegen opts cmod
     |> dummy_functions
   in
+  let _ = Js.log @@ Sexp.to_string @@ codegen_to_sexp opts compiler in
   List.fold_left
     (fun c f -> c |> compBind (fun comp -> codegen_ opts comp f))
     (CompileOk compiler)
@@ -522,6 +542,7 @@ and codegen opts cmod =
               CompileError (Srcloc.start opts.filename, "Failed to generate code")
             | Some (Code (l,code)) ->
               if opts.inDefun then
+                let _ = Js.log @@ "defun env " ^ Sexp.to_string c.env ^ " code " ^ Sexp.to_string code in
                 let final_code =
                   (primapply
                      l
