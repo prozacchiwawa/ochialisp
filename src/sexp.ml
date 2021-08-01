@@ -47,7 +47,7 @@ let matches_integral s =
         first := false
       done
     in
-    !dec
+    !dec && s <> "-"
   in
   if is_hex () then Hex else if is_dec () then Decimal else NotIntegral
 
