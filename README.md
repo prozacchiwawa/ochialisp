@@ -39,9 +39,6 @@ will work as expected.  Very few names are taken as special forms, but
 This code does not share the original code's sharing of quoted string
 and atom namespace.
 
-I had hoped to implement let forms by this point, but it might wait
-for another day.
-
 This is very lightly tested code and might not produce correct output
 for every valid chialisp program.
 
